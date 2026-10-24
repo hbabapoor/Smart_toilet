@@ -1,0 +1,73 @@
+{
+ "currency": "AUD",
+ "checkout": {
+  "enabled": false,
+  "provider": "none",
+  "_providers": "none | stripe_checkout (Pages Function creates a Stripe Checkout Session; needs secret STRIPE_SECRET_KEY) | payment_links (one Stripe/Square link per item, single-item carts only)"
+ },
+ "dimensions_visible": false,
+ "models": [
+  {
+   "id": "k1",
+   "sku": "LOR-K1",
+   "name": "K1",
+   "price": 2990,
+   "image": "cut-k1-400",
+   "payment_link": ""
+  },
+  {
+   "id": "k31",
+   "sku": "LOR-K31",
+   "name": "K31",
+   "price": 2690,
+   "image": "cut-k31-300",
+   "payment_link": ""
+  },
+  {
+   "id": "k4",
+   "sku": "LOR-K4",
+   "name": "K4",
+   "price": 2690,
+   "image": "cut-k4-400",
+   "payment_link": ""
+  },
+  {
+   "id": "k68",
+   "sku": "LOR-K68",
+   "name": "K68",
+   "price": 3190,
+   "image": "cut-k68-400",
+   "payment_link": ""
+  },
+  {
+   "id": "k73",
+   "sku": "LOR-K73",
+   "name": "K73",
+   "price": 3690,
+   "image": "cut-k73-400",
+   "payment_link": ""
+  }
+ ],
+ "addons": [
+  {
+   "id": "install",
+   "sku": "LOR-INSTALL",
+   "name": "Licensed plumber install",
+   "price": 990,
+   "from": true,
+   "per_model": true,
+   "note": "*Licensed plumber, Sydney metro, water outlet beside the toilet.",
+   "behind": "If the water outlet is behind the toilet: send us a photo and we'll tell you what's needed."
+  },
+  {
+   "id": "power",
+   "sku": "LOR-POWER",
+   "name": "Power point",
+   "price": 1100,
+   "from": false,
+   "standalone": true,
+   "note": "A fixed price across Sydney metro, and it can be booked on its own. Every model needs a power point near the toilet."
+  }
+ ],
+ "prices_include_gst": true
+}
