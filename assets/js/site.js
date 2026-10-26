@@ -12,6 +12,51 @@
     $$('.rv').forEach((el) => io.observe(el));
   } else $$('.rv').forEach((el) => el.classList.add('in'));
 
+  // ---- home collection: pinned horizontal scroll ----
+  // The section sticks while the card row slides left with the page scroll, then the page carries on.
+  // Off (plain swipe/scroll-snap row) for reduced motion, no JS, or when the cards don't fit the screen height.
+  const hs = $('[data-hs]');
+  if (hs) {
+    const pin = $('.hs-pin', hs), view = $('.hs-view', hs), track = $('.hs-track', hs), bar = $('.hs-bar span', hs);
+    const mq = matchMedia('(prefers-reduced-motion: reduce)');
+    let on = false, max = 0, x = 0, tick = 0, lastW = 0;
+    const paint = () => {
+      tick = 0; if (!on) return;
+      const p = Math.min(1, Math.max(0, -hs.getBoundingClientRect().top / max));
+      x = p * max; track.style.transform = `translate3d(${(-x).toFixed(1)}px,0,0)`; if (bar) bar.style.transform = `scaleX(${p.toFixed(4)})`;
+    };
+    const off = () => { on = false; hs.classList.remove('on'); hs.style.height = ''; track.style.transform = ''; };
+    const measure = () => {
+      lastW = innerWidth;
+      if (mq.matches) return off();
+      hs.classList.add('on');
+      max = Math.round(track.offsetWidth - view.clientWidth);
+      if (max < 8 || track.offsetHeight + 24 > pin.clientHeight) return off();
+      hs.style.height = (pin.offsetHeight + max) + 'px'; // 1px of page scroll moves the row 1px
+      on = true; view.scrollLeft = 0; paint();
+    };
+    const req = () => { if (!tick) { tick = 1; requestAnimationFrame(paint); } };
+    addEventListener('scroll', req, { passive: true });
+    addEventListener('resize', () => { if (innerWidth !== lastW) measure(); else req(); }); // height-only resizes (mobile address bar) don't re-measure
+    addEventListener('orientationchange', () => setTimeout(measure, 120));
+    addEventListener('load', measure);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(measure);
+    if (mq.addEventListener) mq.addEventListener('change', measure);
+    if ('ResizeObserver' in window) { let rw = 0, rh = 0; new ResizeObserver(([en]) => { const w = Math.round(en.contentRect.width), h = Math.round(en.contentRect.height); if (w !== rw || h !== rh) { rw = w; rh = h; measure(); } }).observe(track); }
+    view.addEventListener('scroll', () => { if (on && view.scrollLeft) view.scrollLeft = 0; });
+    // Keyboard: tabbing to a card scrolls the page so the whole card is in view.
+    view.addEventListener('focusin', (e) => {
+      const c = e.target.closest('.hc'); if (!c || !on) return;
+      view.scrollLeft = 0;
+      const pad = parseFloat(getComputedStyle(track).paddingLeft) || 0, vw = view.clientWidth, L = c.offsetLeft, R = L + c.offsetWidth;
+      let t = x; if (L - pad < x) t = L - pad; else if (R + pad > x + vw) t = R + pad - vw;
+      t = Math.min(max, Math.max(0, t));
+      const top = hs.getBoundingClientRect().top + scrollY;
+      if (Math.abs(t - x) > 1 || scrollY < top - 1 || scrollY > top + max + 1) scrollTo({ top: top + t, behavior: 'auto' });
+    });
+    measure();
+  }
+
   // ---- gentle parallax (home only, skipped for reduced motion) ----
   const prod = $('.prod'), fr = $('.frame');
   if (!RM && (prod || fr)) {
@@ -332,6 +377,7 @@
       CAT = c;
       cart.items = cart.items.filter((x) => c.models.some((m) => m.id === x.id) || c.addons.some((a) => a.id === x.id && a.standalone));
       $$('[data-price]').forEach((el) => { const m = c.models.find((x) => x.id === el.dataset.price); if (m) el.textContent = m.price == null ? 'Price TBC' : money(m.price) + ' inc. GST'; });
+      $$('[data-amt]').forEach((el) => { const m = c.models.find((x) => x.id === el.dataset.amt); if (m && m.price != null) el.textContent = money(m.price); });
       const want = params.get('add'); // no-JS fallback links: /cart/?add=k1
       if (want && (c.models.some((m) => m.id === want) || c.addons.some((a) => a.id === want && a.standalone))) { add(want); history.replaceState(null, '', location.pathname); } else paint();
       if (params.get('paid') === '1') { cart.items = []; save(); }
