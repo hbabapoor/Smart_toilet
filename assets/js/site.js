@@ -151,6 +151,7 @@
   }
 
   // ---- shared form helpers ----
+  const orderParam = () => { const o = (params.get('order') || '').trim(); return /^[A-Za-z0-9-]{1,40}$/.test(o) ? o : ''; };
   const MODELS = ['K1', 'K31', 'K4', 'K68', 'K73'];
   const PHONE = '1300 709 100';
   const setup = (form) => {
@@ -159,6 +160,7 @@
     if (sel && MODELS.includes(want)) sel.value = want;
     const fill = (k, v) => { const el = form.elements[k]; if (el && v) el.value = v; };
     fill('page', location.pathname); fill('referrer', (tags._ref || document.referrer || '').slice(0, 500));
+    fill('order', orderParam()); // /register/?order=LOR-ABC123 from the order confirmation
     TAGS.forEach((k) => fill(k, tags[k]));
   };
   const errs = (form) => ({
@@ -404,6 +406,125 @@
       if (want && (c.models.some((m) => m.id === want) || c.addons.some((a) => a.id === want && a.standalone))) { add(want); history.replaceState(null, '', location.pathname); } else paint();
       if (params.get('paid') === '1') { cart.items = []; save(); }
     }).catch(() => { views.forEach((v) => { v.innerHTML = `<p>The cart could not load. Please call <a href="tel:1300709100">${PHONE}</a>.</p>`; }); });
+  }
+
+  // ---- order confirmation (/order-confirmed/?order=...): show the number and carry it to /register/ and /book-installation/ ----
+  if ($('[data-order-confirmed]')) {
+    const o = orderParam();
+    if (o) {
+      $$('[data-order-no]').forEach((el) => { el.textContent = o; const w = el.closest('[hidden]'); if (w) w.hidden = false; });
+      $$('a[data-order-link]').forEach((a) => { const u = new URL(a.getAttribute('href'), location.href); u.searchParams.set('order', o); a.setAttribute('href', withTags(u.pathname + u.search + u.hash)); });
+    }
+  }
+
+  // ---- book your installation (/book-installation/): gate → day and time → details → pay → confirmed ----
+  // Every backend call goes through window.LorentisBooking (assets/js/booking-adapter.js, a mock for now); the date rules
+  // (weekdays, 2 business days to 6 weeks out, Sydney time) live in assets/js/booking-rules.js.
+  const bk = $('form[data-book]');
+  if (bk) {
+    const startBooking = () => {
+      const A = window.LorentisBooking, RU = window.LorentisBookingRules; if (!A || !RU) return;
+      const el = bk.elements, E = errs(bk), status = $('.status', bk);
+      const locked = $('[data-locked]', bk), gate = $$('[data-gate]', bk), note = $('.bk-gate-note', bk);
+      const cal = $('[data-cal]', bk), slotsBox = $('[data-slots]', bk), calErr = $('[data-cal-err]', bk), payBody = $('[data-pay-body]', bk), done = $('[data-done]');
+      const money = (n) => '$' + Number(n).toLocaleString('en-AU', { maximumFractionDigits: 0 });
+      const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const PV = A.preview ? '<p class="bk-pv">Preview: this request isn\'t sent anywhere yet. Nothing is charged.</p>' : '';
+      let avail = {}, day = '', slot = '', held = null, quote = null;
+      const open = () => gate.every((g) => g.checked);
+      const lock = () => {
+        const off = !open();
+        if (off) { locked.setAttribute('inert', ''); locked.setAttribute('aria-disabled', 'true'); } else { locked.removeAttribute('inert'); locked.removeAttribute('aria-disabled'); }
+        locked.classList.toggle('off', off); note.hidden = !off;
+      };
+      gate.forEach((g) => g.addEventListener('change', lock)); lock();
+      // a corrected field drops its own error
+      const fix = (e) => { const n = e.target.name, x = n && document.getElementById(`book-form-${n}-err`); if (!x) return; x.remove(); $$(`[name="${n}"]`, bk).forEach((f) => { f.removeAttribute('aria-invalid'); f.removeAttribute('aria-describedby'); }); };
+      bk.addEventListener('input', fix); bk.addEventListener('change', fix);
+      if (orderParam()) el.order.value = orderParam();
+      // calendar: Monday-to-Friday rows, one button per day; arrow keys move between open days
+      const weeks = RU.weeks(), all = weeks.flat();
+      const short = (d) => new Intl.DateTimeFormat('en-AU', { timeZone: 'UTC', month: 'short' }).format(new Date(d + 'T00:00:00Z'));
+      const free = (d) => RU.isBookable(d) && avail[d] && (avail[d].am === 'open' || avail[d].pm === 'open');
+      const renderCal = () => {
+        const focusDay = day && free(day) ? day : all.find(free);
+        cal.innerHTML = `<div class="cal-head" aria-hidden="true"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span></div><div class="cal-grid" role="group" aria-label="Weekdays you can book">${all.map((d, k) => {
+          const ok = RU.isBookable(d), f = free(d), n = +d.slice(8), mon = n === 1 || k === 0 || (k % 5 === 0 && n <= 7) ? short(d) : '';
+          return `<button type="button" class="day${d === day ? ' sel' : ''}${ok && !f ? ' is-full' : ''}" data-day="${d}" aria-pressed="${d === day}"${f ? '' : ' disabled'} tabindex="${d === focusDay ? 0 : -1}" aria-label="${esc(RU.label(d))}${f ? '' : ok ? ', fully booked' : ', not available'}"><small>${mon}</small><b>${n}</b></button>`;
+        }).join('')}</div><p class="cal-key"><span class="k-open">Open</span><span class="k-full">Fully booked</span></p>`;
+      };
+      const renderSlots = () => {
+        if (!day) { slotsBox.innerHTML = '<p class="hint">Choose a day to see the times.</p>'; return; }
+        const a = avail[day] || {};
+        slotsBox.innerHTML = `<fieldset class="slots"><legend>Times on ${esc(RU.label(day, { year: undefined }))}</legend>${RU.SLOTS.map((t) => { const o = a[t.id] === 'open';
+          return `<label class="opt slot${o ? '' : ' booked'}"><input type="radio" name="slot" value="${t.id}"${slot === t.id ? ' checked' : ''}${o ? '' : ' disabled'}> <span><b>${t.label}</b> ${t.time}${o ? '' : ' · Booked'}</span></label>`; }).join('')}</fieldset>`;
+      };
+      const pick = (d) => { day = d; if (!avail[d] || avail[d][slot] !== 'open') slot = ''; calErr.hidden = true; renderCal(); renderSlots(); const b = $(`[data-day="${d}"]`, cal); if (b) b.focus(); };
+      cal.addEventListener('click', (e) => { const b = e.target.closest('[data-day]'); if (b && !b.disabled) pick(b.dataset.day); });
+      cal.addEventListener('keydown', (e) => {
+        const b = e.target.closest('[data-day]'); if (!b) return;
+        const mv = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -5, ArrowDown: 5 }[e.key]; if (!mv) return;
+        e.preventDefault(); let k = all.indexOf(b.dataset.day) + mv;
+        while (k >= 0 && k < all.length && !free(all[k])) k += Math.sign(mv);
+        if (k >= 0 && k < all.length) { $$('[data-day]', cal).forEach((x) => { x.tabIndex = -1; }); const n = $(`[data-day="${all[k]}"]`, cal); n.tabIndex = 0; n.focus(); }
+      });
+      slotsBox.addEventListener('change', (e) => { if (e.target.name === 'slot') { slot = e.target.value; calErr.hidden = true; } });
+      A.getAvailability({ from: all[0], to: all[all.length - 1] }).then((r) => { avail = (r && r.days) || {}; renderCal(); renderSlots(); })
+        .catch(() => { cal.innerHTML = `<p>The calendar could not load. Please call <a href="tel:1300709100">${PHONE}</a>.</p>`; });
+      // the amount: ?amount= (a confirmed amount in a link we send), otherwise the order's requested add-ons from the adapter
+      const linkAmount = () => { const n = Number(params.get('amount')); return Number.isInteger(n) && n > 0 && n <= 20000 ? n : 0; };
+      const renderPay = () => {
+        const lines = quote.lines.map((l) => `<li><span>${esc(l.name)}</span><b>${money(l.amount)}</b></li>`).join('');
+        const mock = A.preview && !linkAmount() ? `<details class="bk-mock"><summary>Preview: change the mock amount</summary><label class="opt"><input type="checkbox" data-mock="install"${quote.lines.some((l) => /plumber/.test(l.name)) ? ' checked' : ''}> <span>Installation by licensed plumber ($990)</span></label><label class="opt"><input type="checkbox" data-mock="power"${quote.lines.some((l) => /electrician/.test(l.name)) ? ' checked' : ''}> <span>Power point by licensed electrician ($1,100)</span></label></details>` : '';
+        const t = RU.SLOTS.find((x) => x.id === held.slot);
+        payBody.innerHTML = `<p class="bk-hold">Request received. We're holding <b>${esc(RU.label(held.date, { year: undefined }))}, ${t.label.toLowerCase()} (${t.time})</b> for you. Pay to confirm your booking.</p><p class="hint">The amount we confirmed after your free assessment.</p><ul class="bk-lines">${lines}</ul><div class="tot"><span>To pay</span><b data-pay-total>${money(quote.total)}</b></div>${mock}${PV}<div class="form-foot"><button type="button" class="btn" data-pay-now${quote.total > 0 ? '' : ' disabled'}>Pay ${money(quote.total)}</button></div>`;
+      };
+      payBody.addEventListener('change', (e) => {
+        const m = e.target.closest('[data-mock]'); if (!m) return;
+        const on = (k) => $(`[data-mock="${k}"]`, payBody).checked, L = [];
+        if (on('install')) L.push({ name: 'Installation by licensed plumber', amount: 990 });
+        if (on('power')) L.push({ name: 'Power point by licensed electrician', amount: 1100 });
+        quote = { lines: L, total: L.reduce((t, l) => t + l.amount, 0) }; renderPay(); const f = $(`[data-mock="${m.dataset.mock}"]`, payBody); f.closest('details').open = true; f.focus();
+      });
+      bk.addEventListener('submit', async (e) => {
+        e.preventDefault(); E.clear(); status.className = 'status'; status.textContent = ''; calErr.hidden = true;
+        if (!open()) { lock(); gate.find((g) => !g.checked).focus(); return; }
+        const L = {}, v = (k) => el[k].value.trim();
+        if (!/^[A-Za-z0-9-]{4,40}$/.test(v('order'))) L.order = 'Please enter your order number. It is on your order confirmation.';
+        if (!v('name')) L.name = 'Please enter your name.';
+        const ph = v('phone'), dg = ph.replace(/\D/g, '');
+        if (!ph) L.phone = 'Please enter your phone number.'; else if (!/^[+0-9 ()-]{8,20}$/.test(ph) || dg.length < 8 || dg.length > 15) L.phone = 'Please check your phone number.';
+        if (!v('email')) L.email = 'Please enter your email address.'; else if (!el.email.checkValidity()) L.email = 'Please check your email address.';
+        if (!v('suburb')) L.suburb = 'Please enter your suburb.';
+        if (!el.power.value) L.power = 'Please choose Yes, No or Not sure.';
+        const noTime = !day ? 'Please choose a day.' : !slot ? 'Please choose a morning or afternoon.' : '';
+        if (noTime) { calErr.textContent = noTime; calErr.hidden = false; }
+        if (Object.keys(L).length) { E.show(L); const pe = document.getElementById('book-form-power-err'); if (pe) $('.bk-pw', bk).append(pe); return; }
+        if (noTime) { const f = day ? $('input[name=slot]:not(:disabled)', slotsBox) : $('[data-day][tabindex="0"]', cal); if (f) f.focus(); return; }
+        const b = $('[data-continue]', bk); b.disabled = true;
+        const data = { order: v('order'), name: v('name'), phone: ph, email: v('email'), suburb: v('suburb'), power: el.power.value, date: day, slot };
+        try {
+          const r = await A.submitRequest(data);
+          if (!r || !r.ok) { status.className = 'status bad'; status.textContent = (r && r.error) || `Something went wrong. Please call ${PHONE}.`; return; }
+          held = { ...data, id: r.id };
+          quote = linkAmount() ? { lines: [{ name: 'Your confirmed install amount', amount: linkAmount() }], total: linkAmount() } : await A.getQuote({ order: data.order, power: data.power });
+          renderPay(); const h = $('[data-pay] legend', bk); h.setAttribute('tabindex', '-1'); h.focus();
+          $('[data-pay]', bk).scrollIntoView({ block: 'start', behavior: RM ? 'auto' : 'smooth' });
+        } catch { status.className = 'status bad'; status.textContent = `Something went wrong. Please call ${PHONE}.`; } finally { b.disabled = false; }
+      });
+      payBody.addEventListener('click', async (e) => {
+        const b = e.target.closest('[data-pay-now]'); if (!b || !held || !quote) return;
+        b.disabled = true; b.textContent = 'Paying…';
+        try {
+          const r = await A.pay({ id: held.id, amount: quote.total });
+          if (!r || !r.ok) { b.disabled = false; b.textContent = `Pay ${money(quote.total)}`; status.className = 'status bad'; status.textContent = (r && r.error) || `Payment did not go through. Please call ${PHONE}.`; return; }
+          const t = RU.SLOTS.find((x) => x.id === held.slot);
+          done.innerHTML = `<p class="eyebrow">Booking confirmed</p><h2>Booking <i>confirmed.</i></h2><dl class="bk-dl"><div><dt>Date</dt><dd>${esc(RU.label(held.date))}</dd></div><div><dt>Time</dt><dd>${t.label}, ${t.time}</dd></div><div><dt>Amount paid</dt><dd>${money(r.amount)}</dd></div><div><dt>Order number</dt><dd>${esc(held.order)}</dd></div><div><dt>Booking reference</dt><dd>${esc(r.id)}</dd></div></dl><p>Your install is booked for ${esc(held.suburb)}. We'll send your confirmation to ${esc(held.email)}. Questions? Call <a href="tel:1300709100">${PHONE}</a>.</p>${A.preview ? '<p class="bk-pv">Preview: this request isn\'t sent anywhere yet. Nothing has been charged.</p>' : ''}`;
+          bk.hidden = true; done.hidden = false; done.focus(); done.scrollIntoView({ block: 'start', behavior: 'auto' });
+        } catch { b.disabled = false; b.textContent = `Pay ${money(quote.total)}`; status.className = 'status bad'; status.textContent = `Payment did not go through. Please call ${PHONE}.`; }
+      });
+    };
+    if (window.LorentisBooking) startBooking(); else addEventListener('DOMContentLoaded', startBooking);
   }
 
   // ---- unsubscribe (legacy list) ----
