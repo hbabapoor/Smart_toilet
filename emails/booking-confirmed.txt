@@ -1,0 +1,23 @@
+LORENTIS
+
+BOOKING CONFIRMED
+Your install is booked, {{first_name}}.
+
+Thank you. Your payment is in and your time is locked in. Here are your details.
+
+Date: {{date}}
+Time: {{time_window}}
+Suburb: {{suburb}}
+Amount paid, GST inclusive: {{amount_paid}}
+Order number: {{order_number}}
+Booking reference: {{booking_ref}}
+
+WHAT TO EXPECT ON THE DAY
+- A licensed plumber installs your LORENTIS toilet at your home in {{suburb}}.
+- Arriving in your window: {{time_window}} on {{date}}, Sydney time.
+- Sydney metro: we install across Sydney metro.
+
+Questions about your booking? Call 1300 709 100 or email info@lorentis.com.au with your booking reference {{booking_ref}}.
+
+LORENTIS · Sydney metro
+Prices in AUD, GST inclusive.

@@ -1,0 +1,39 @@
+LORENTIS
+
+ORDER CONFIRMED
+Thank you, {{first_name}}. Your order is in.
+
+Your toilet is paid for. Install isn't charged now. We'll confirm the price after your free assessment.
+
+ORDER {{order_number}}
+{{#items}}
+- LORENTIS {{model}}{{#qty_label}} x {{qty_label}}{{/qty_label}}: {{price}}
+{{#note}}  {{note}}
+{{/note}}{{/items}}
+Paid today, GST inclusive: {{order_total}}
+{{#has_requests}}
+REQUESTED, PAID AFTER YOUR FREE ASSESSMENT
+{{#install_requested}}- Installation by licensed plumber, from $990*
+{{/install_requested}}{{#power_requested}}- Power point, +$1,100
+{{/power_requested}}Nothing is charged for these today.
+{{/has_requests}}
+NEXT STEP: SEND US PHOTOS OF YOUR BATHROOM
+Five photos are all we need. We use them to confirm your install and price. It takes a few minutes on your phone.
+
+1. Send your bathroom photos
+   The toilet area, the side view, the water outlet, the nearest power point and the floor.
+   Send your photos: {{photo_upload_url}}
+
+2. We confirm your install and price
+   Our team looks at your photos and confirms your install and its price with you.
+
+3. Your toilet arrives, then book and pay for your install
+   Choose a weekday morning or afternoon and pay for your install online.
+   Book your installation: {{book_url}}
+
+Questions? Call 1300 709 100 or email info@lorentis.com.au.
+{{#install_requested}}
+*Licensed plumber install from $990 in Sydney metro (where the water outlet is beside the toilet).
+{{/install_requested}}
+LORENTIS · Sydney metro
+Prices in AUD, GST inclusive.

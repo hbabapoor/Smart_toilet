@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en-AU" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex">
+<title>Your LORENTIS install is booked: {{date}}</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;1,500&amp;family=Manrope:wght@400;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;padding:0;background:#ECE6DC}
+a{color:#0F1B2D}
+@media only screen and (max-width:620px){
+ .px{padding-left:22px!important;padding-right:22px!important}
+ .h1{font-size:34px!important;line-height:40px!important}
+ .btn a{display:block!important}
+}
+</style>
+</head>
+<body style="margin:0;padding:0;background:#ECE6DC;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#ECE6DC;">Your install is booked for {{date}}, {{time_window}}.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ECE6DC;">
+<tr><td align="center" style="padding:24px 10px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#F5F2EC;">
+
+<!-- header -->
+<tr><td class="px" align="center" style="background:#0F1B2D;padding:30px 40px;">
+ <div style="font-family:'Cormorant Garamond',Georgia,'Times New Roman',serif;font-size:26px;line-height:30px;letter-spacing:8px;color:#F5F2EC;">LORENTIS</div>
+ <div style="font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:10px;line-height:16px;letter-spacing:4px;color:#C9B27C;text-transform:uppercase;padding-top:6px;">Sydney</div>
+</td></tr>
+
+<!-- hero -->
+<tr><td class="px" style="padding:42px 40px 8px;">
+ <div style="font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;line-height:16px;letter-spacing:3px;color:#A88E57;text-transform:uppercase;">Booking confirmed</div>
+ <h1 class="h1" style="margin:12px 0 0;font-family:'Cormorant Garamond',Georgia,'Times New Roman',serif;font-weight:500;font-size:40px;line-height:46px;color:#0F1B2D;">Your install is <i>booked, {{first_name}}.</i></h1>
+ <p style="margin:16px 0 0;font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:26px;color:#1A2230;">Thank you. Your payment is in and your time is locked in. Here are your details.</p>
+</td></tr>
+
+<!-- details -->
+<tr><td class="px" style="padding:24px 40px 8px;">
+ <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #C9B27C;">
+  <tr><td style="padding:14px 0;border-bottom:1px solid #E2DACB;">
+   <div style="font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;line-height:16px;letter-spacing:3px;color:#8A93A3;text-transform:uppercase;">Date</div>
+   <div style="padding-top:4px;font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:17px;line-height:24px;color:#0F1B2D;font-weight:600;">{{date}}</div>
+  </td></tr>
+  <tr><td style="padding:14px 0;border-bottom:1px solid #E2DACB;">
+   <div style="font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;line-height:16px;letter-spacing:3px;color:#8A93A3;text-transform:uppercase;">Time</div>
+   <div style="padding-top:4px;font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:17px;line-height:24px;color:#0F1B2D;font-weight:600;">{{time_window}}</div>
+  </td></tr>
+  <tr><td style="padding:14px 0;border-bottom:1px solid #E2DACB;">
+   <div style="font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;line-height:16px;letter-spacing:3px;color:#8A93A3;text-transform:uppercase;">Suburb</div>
+   <div style="padding-top:4px;font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:17px;line-height:24px;color:#0F1B2D;font-weight:600;">{{suburb}}</div>
+  </td></tr>
+  <tr><td style="padding:14px 0;border-bottom:1px solid #E2DACB;">
+   <div style="font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;line-height:16px;letter-spacing:3px;color:#8A93A3;text-transform:uppercase;">Amount paid, GST inclusive</div>
+   <div style="padding-top:4px;font-family:'Cormorant Garamond',Georgia,'Times New Roman',serif;font-size:28px;line-height:32px;color:#A88E57;">{{amount_paid}}</div>
+  </td></tr>
+  <tr><td style="padding:14px 0;border-bottom:1px solid #E2DACB;">
+   <div style="font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;line-height:16px;letter-spacing:3px;color:#8A93A3;text-transform:uppercase;">Order number</div>
+   <div style="padding-top:4px;font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:17px;line-height:24px;color:#0F1B2D;font-weight:600;">{{order_number}}</div>
+  </td></tr>
+  <tr><td style="padding:14px 0;border-bottom:1px solid #E2DACB;">
+   <div style="font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;line-height:16px;letter-spacing:3px;color:#8A93A3;text-transform:uppercase;">Booking reference</div>
+   <div style="padding-top:4px;font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:17px;line-height:24px;color:#0F1B2D;font-weight:600;">{{booking_ref}}</div>
+  </td></tr>
+ </table>
+</td></tr>
+
+<!-- what to expect -->
+<tr><td class="px" style="padding:36px 40px 8px;">
+ <div style="font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;line-height:16px;letter-spacing:3px;color:#A88E57;text-transform:uppercase;">What to expect</div>
+ <h2 style="margin:10px 0 0;font-family:'Cormorant Garamond',Georgia,'Times New Roman',serif;font-weight:500;font-size:30px;line-height:36px;color:#0F1B2D;">On the <i>day.</i></h2>
+ <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px;">
+  <tr><td style="padding:10px 0;font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:23px;color:#1A2230;"><strong style="color:#0F1B2D;">A licensed plumber</strong> installs your LORENTIS toilet at your home in {{suburb}}.</td></tr>
+  <tr><td style="padding:10px 0;border-top:1px solid #E2DACB;font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:23px;color:#1A2230;"><strong style="color:#0F1B2D;">Arriving in your window:</strong> {{time_window}} on {{date}}, Sydney time.</td></tr>
+  <tr><td style="padding:10px 0;border-top:1px solid #E2DACB;font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:23px;color:#1A2230;"><strong style="color:#0F1B2D;">Sydney metro:</strong> we install across Sydney metro.</td></tr>
+ </table>
+</td></tr>
+
+<!-- help -->
+<tr><td class="px" style="padding:24px 40px 36px;font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:22px;color:#5E6573;">
+ Questions about your booking? Call <a href="tel:1300709100" style="color:#0F1B2D;">1300 709 100</a> or email <a href="mailto:info@lorentis.com.au" style="color:#0F1B2D;">info@lorentis.com.au</a> with your booking reference {{booking_ref}}.
+</td></tr>
+
+<tr><td class="px" align="center" style="background:#0F1B2D;padding:24px 40px;font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;line-height:19px;color:#C3C9D4;">
+ LORENTIS &middot; Sydney metro<br>Prices in AUD, GST inclusive.
+</td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>
