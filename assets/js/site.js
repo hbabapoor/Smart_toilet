@@ -315,7 +315,9 @@
     const img = (m) => `<picture><source type="image/webp" srcset="${BP}/assets/img/${m.image}.webp"><img src="${BP}/assets/img/${m.image}.webp" alt="" width="80" height="120" loading="lazy"></picture>`;
     function linesHtml() {
       const inst = CAT.addons.find((a) => a.id === 'install'), pw = CAT.addons.find((a) => a.id === 'power');
-      let known = 0, tbc = 0, from = false, html = '';
+      let known = 0, tbc = 0, from = false, html = '', instOpts = '';
+      const nModels = cart.items.filter((x) => CAT.models.some((m) => m.id === x.id)).length;
+      const card = (attr, on, label) => `<label class="opt addon"><input type="checkbox" ${attr}${on ? ' checked' : ''}> <span>${esc(label)}</span></label>`;
       cart.items.forEach((it, i) => {
         const m = CAT.models.find((x) => x.id === it.id), a = CAT.addons.find((x) => x.id === it.id);
         if (!m && !a) return;
@@ -325,7 +327,7 @@
         let opt = '';
         if (m && inst) {
           if (it.install) { known += inst.price * it.qty; from = true; }
-          opt = `<label class="opt"><input type="checkbox" data-inst="${i}"${it.install ? ' checked' : ''}> <span>${esc(inst.label || inst.name)}</span></label>`;
+          instOpts += card(`data-inst="${i}"`, it.install, (inst.label || inst.name) + (nModels > 1 ? ` · ${m.name}` : ''));
         }
         html += `<li class="line">${m ? `<span class="th">${img(m)}</span>` : `<span class="th ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9.5 9.5v3M14.5 9.5v3M12 15v1.5"/></svg></span>`}
           <div class="ld"><h3>${m ? 'LORENTIS ' + esc(m.name) : esc(a.name)}</h3><p class="lp">${unit == null ? '<span class="tbc-tag">Price TBC</span>' : (a && a.from ? 'from ' : '') + money(unit) + (a && a.from ? '*' : '') + (m ? ' inc. GST' : '')}</p>
@@ -333,7 +335,9 @@
           <div class="qty"><button type="button" data-dec="${i}" aria-label="One fewer">−</button><span aria-live="polite">${it.qty}</span><button type="button" data-inc="${i}" aria-label="One more">+</button><button type="button" class="rm" data-rm="${i}">Remove</button></div></div></li>`;
       });
       const hasPower = !!find('power');
-      const extra = pw ? `<div class="addons"><label class="opt pw"><input type="checkbox" data-pw${hasPower ? ' checked' : ''}> <span>${esc(pw.label || pw.name)}</span></label><p class="ln">${esc(pw.note)}</p></div>` : '';
+      const pwOpt = pw ? card('data-pw', hasPower, pw.label || pw.name) : '';
+      const notes = [inst && instOpts ? inst.note : '', pw ? pw.note : ''].filter(Boolean).map((x) => `<p>${esc(x)}</p>`).join('');
+      const extra = instOpts || pwOpt ? `<div class="addons" role="group" aria-label="Add-ons">${instOpts}${pwOpt}</div>${notes ? `<div class="addon-notes">${notes}</div>` : ''}` : '';
       const total = tbc ? `<div class="tot"><span>Total</span><b>To be confirmed</b></div><p class="ln">${known ? `Priced items: ${money(known)}. ` : ''}Model prices are to be confirmed.</p>` : `<div class="tot"><span>Total</span><b>${money(known)}</b></div>${from ? `<p class="ln">Includes installation by licensed plumber (${money(inst.price)}*).</p>` : ''}`;
       return { html, extra, total, inst };
     }
@@ -346,7 +350,7 @@
         if (!cart.items.length) { v.innerHTML = `<div class="empty"><p>Your cart is empty.</p><p><a class="ulink" href="${BP}/#collection">See the collection</a></p></div>`; return; }
         const L = linesHtml();
         v.innerHTML = `<ul class="lines">${L.html}</ul>${L.extra}${L.total}
-          <p class="fn">${esc(L.inst ? L.inst.note : '')} ${esc(L.inst ? L.inst.behind : '')}</p>
+          <p class="fn">${esc(L.inst ? L.inst.behind : '')}</p>
           <div class="co"><button type="button" class="btn" data-checkout>Checkout</button>${v.dataset.cartView === 'drawer' ? `<a class="ulink" href="${BP}/cart/">View cart</a>` : ''}</div>
           <div class="status co-status" role="status" aria-live="polite"></div>`;
       });
