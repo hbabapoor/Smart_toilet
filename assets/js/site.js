@@ -12,6 +12,14 @@
     $$('.rv').forEach((el) => io.observe(el));
   } else $$('.rv').forEach((el) => el.classList.add('in'));
 
+  // ---- trust grid: one-time staggered fade-in (cards show at once with no JS or reduced motion) ----
+  const tg = $('[data-tg]');
+  if (tg && !RM && 'IntersectionObserver' in window && !R.classList.contains('shot')) {
+    tg.classList.add('tg-wait');
+    const tio = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { tg.classList.add('tg-in'); tio.disconnect(); } }, { threshold: 0.2 });
+    tio.observe(tg);
+  }
+
   // ---- home collection: pinned horizontal scroll ----
   // The section sticks while the card row slides left with the page scroll, then the page carries on.
   // Off (plain swipe/scroll-snap row) for reduced motion, no JS, or when the cards don't fit the screen height.
@@ -45,14 +53,18 @@
     if ('ResizeObserver' in window) { let rw = 0, rh = 0; new ResizeObserver(([en]) => { const w = Math.round(en.contentRect.width), h = Math.round(en.contentRect.height); if (w !== rw || h !== rh) { rw = w; rh = h; measure(); } }).observe(track); }
     view.addEventListener('scroll', () => { if (on && view.scrollLeft) view.scrollLeft = 0; });
     // Keyboard: tabbing to a card scrolls the page so the whole card is in view.
+    const reveal = (c) => {
+      if (!on) return;
+      view.scrollLeft = 0;
+      const top = hs.getBoundingClientRect().top + scrollY, cur = Math.min(max, Math.max(0, scrollY - top));
+      const pad = parseFloat(getComputedStyle(track).paddingLeft) || 0, vw = view.clientWidth, L = c.offsetLeft, R = L + c.offsetWidth;
+      let t = cur; if (L - pad < cur) t = L - pad; else if (R + pad > cur + vw) t = R + pad - vw;
+      t = Math.min(max, Math.max(0, t));
+      if (Math.abs(t - cur) > 1 || scrollY < top - 1 || scrollY > top + max + 1) scrollTo({ top: top + t, behavior: 'auto' });
+    };
     view.addEventListener('focusin', (e) => {
       const c = e.target.closest('.hc'); if (!c || !on) return;
-      view.scrollLeft = 0;
-      const pad = parseFloat(getComputedStyle(track).paddingLeft) || 0, vw = view.clientWidth, L = c.offsetLeft, R = L + c.offsetWidth;
-      let t = x; if (L - pad < x) t = L - pad; else if (R + pad > x + vw) t = R + pad - vw;
-      t = Math.min(max, Math.max(0, t));
-      const top = hs.getBoundingClientRect().top + scrollY;
-      if (Math.abs(t - x) > 1 || scrollY < top - 1 || scrollY > top + max + 1) scrollTo({ top: top + t, behavior: 'auto' });
+      reveal(c); requestAnimationFrame(() => reveal(c));
     });
     measure();
   }
