@@ -173,7 +173,8 @@
    "per_model": true,
    "note": "*Licensed plumber, Sydney metro, water outlet beside the toilet.",
    "behind": "If the water outlet is behind the toilet: send us a photo and we'll tell you what's needed.",
-   "label": "Add installation by licensed plumber (+$990*)"
+   "label": "Add installation by licensed plumber (from $990*, paid after your free assessment)",
+   "charged_at_checkout": false
   },
   {
    "id": "power",
@@ -183,8 +184,10 @@
    "from": false,
    "standalone": true,
    "note": "A fixed price across Sydney metro, and it can be booked on its own. Every model needs a power point near the toilet.",
-   "label": "Add power point by licensed electrician (+$1,100)"
+   "label": "Add power point by licensed electrician (+$1,100, paid after your free assessment)",
+   "charged_at_checkout": false
   }
  ],
- "prices_include_gst": true
+ "prices_include_gst": true,
+ "charge_note": "Install isn't charged now. We'll confirm the price after your free assessment."
 }

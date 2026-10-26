@@ -316,18 +316,17 @@
     const img = (m) => `<picture><source type="image/webp" srcset="${BP}/assets/img/${m.image}.webp"><img src="${BP}/assets/img/${m.image}.webp" alt="" width="80" height="120" loading="lazy"></picture>`;
     function linesHtml() {
       const inst = CAT.addons.find((a) => a.id === 'install'), pw = CAT.addons.find((a) => a.id === 'power');
-      let known = 0, tbc = 0, from = false, html = '', instOpts = '';
+      let known = 0, tbc = 0, html = '', instOpts = '';
       const nModels = cart.items.filter((x) => CAT.models.some((m) => m.id === x.id)).length;
       const card = (attr, on, label) => `<label class="opt addon"><input type="checkbox" ${attr}${on ? ' checked' : ''}> <span>${esc(label)}</span></label>`;
       cart.items.forEach((it, i) => {
         const m = CAT.models.find((x) => x.id === it.id), a = CAT.addons.find((x) => x.id === it.id);
         if (!m && !a) return;
         const unit = m ? m.price : a.price;
-        if (unit == null) tbc++; else known += unit * it.qty;
-        if (a && a.id === 'power') return; // shown as the tick box in the add-ons block below
+        if (a && a.id === 'power') return; // a requested add-on (tick box below), not charged now
+        if (unit == null) tbc++; else known += unit * it.qty; // toilets only
         let opt = '';
         if (m && inst) {
-          if (it.install) { known += inst.price * it.qty; from = true; }
           instOpts += card(`data-inst="${i}"`, it.install, (inst.label || inst.name) + (nModels > 1 ? ` · ${m.name}` : ''));
         }
         html += `<li class="line">${m ? `<span class="th">${img(m)}</span>` : `<span class="th ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9.5 9.5v3M14.5 9.5v3M12 15v1.5"/></svg></span>`}
@@ -338,11 +337,10 @@
       const hasPower = !!find('power');
       const pwOpt = pw ? card('data-pw', hasPower, pw.label || pw.name) : '';
       const notes = [inst && instOpts ? inst.note : '', pw ? pw.note : ''].filter(Boolean).map((x) => `<p>${esc(x)}</p>`).join('');
-      const extra = instOpts || pwOpt ? `<div class="addons" role="group" aria-label="Add-ons">${instOpts}${pwOpt}</div>${notes ? `<div class="addon-notes">${notes}</div>` : ''}` : '';
-      // one "Includes ..." line per ticked add-on, nothing when neither is ticked
-      const includes = [from && inst ? `Includes installation by licensed plumber (${money(inst.price)}*).` : '', hasPower && pw ? `Includes power point by licensed electrician (+${money(pw.price)}).` : '']
-        .filter(Boolean).map((x) => `<p class="ln inc">${esc(x)}</p>`).join('');
-      const total = tbc ? `<div class="tot"><span>Total</span><b>To be confirmed</b></div><p class="ln">${known ? `Priced items: ${money(known)}. ` : ''}Model prices are to be confirmed.</p>` : `<div class="tot"><span>Total</span><b>${money(known)}</b></div>${includes}`;
+      const extra = instOpts || pwOpt ? `<div class="addons" role="group" aria-label="Add-ons, paid after your free assessment">${instOpts}${pwOpt}</div>${notes ? `<div class="addon-notes">${notes}</div>` : ''}` : '';
+      // the add-ons are requests: paid after the free assessment, never part of this total
+      const later = instOpts || pwOpt ? `<p class="ln req">${esc(CAT.charge_note || "Install isn't charged now. We'll confirm the price after your free assessment.")}</p>` : '';
+      const total = tbc ? `<div class="tot"><span>Total</span><b>To be confirmed</b></div><p class="ln">${known ? `Priced items: ${money(known)}. ` : ''}Model prices are to be confirmed.</p>${later}` : `<div class="tot"><span>Total</span><b>${money(known)}</b></div>${later}`;
       return { html, extra, total, inst };
     }
     function paint() {
