@@ -321,10 +321,11 @@
         if (!m && !a) return;
         const unit = m ? m.price : a.price;
         if (unit == null) tbc++; else known += unit * it.qty;
+        if (a && a.id === 'power') return; // shown as the tick box in the add-ons block below
         let opt = '';
         if (m && inst) {
-          if (it.install) { known += inst.price * it.qty; from = from || !!inst.from; }
-          opt = `<label class="opt"><input type="checkbox" data-inst="${i}"${it.install ? ' checked' : ''}> <span>${esc(inst.name)} <b>from ${money(inst.price)}*</b></span></label>`;
+          if (it.install) { known += inst.price * it.qty; from = true; }
+          opt = `<label class="opt"><input type="checkbox" data-inst="${i}"${it.install ? ' checked' : ''}> <span>${esc(inst.label || inst.name)}</span></label>`;
         }
         html += `<li class="line">${m ? `<span class="th">${img(m)}</span>` : `<span class="th ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9.5 9.5v3M14.5 9.5v3M12 15v1.5"/></svg></span>`}
           <div class="ld"><h3>${m ? 'LORENTIS ' + esc(m.name) : esc(a.name)}</h3><p class="lp">${unit == null ? '<span class="tbc-tag">Price TBC</span>' : (a && a.from ? 'from ' : '') + money(unit) + (a && a.from ? '*' : '') + (m ? ' inc. GST' : '')}</p>
@@ -332,8 +333,8 @@
           <div class="qty"><button type="button" data-dec="${i}" aria-label="One fewer">−</button><span aria-live="polite">${it.qty}</span><button type="button" data-inc="${i}" aria-label="One more">+</button><button type="button" class="rm" data-rm="${i}">Remove</button></div></div></li>`;
       });
       const hasPower = !!find('power');
-      const extra = pw && !hasPower ? `<button type="button" class="add-pw" data-add-pw>+ Add a ${esc(pw.name.toLowerCase())} (${money(pw.price)})</button><p class="ln">${esc(pw.note)}</p>` : '';
-      const total = tbc ? `<div class="tot"><span>Total</span><b>To be confirmed</b></div><p class="ln">${known ? `Priced items: ${money(known)}. ` : ''}Model prices are to be confirmed.</p>` : `<div class="tot"><span>Total</span><b>${from ? 'from ' : ''}${money(known)}</b></div>${from ? '<p class="ln">Includes the licensed plumber install, priced from $990*.</p>' : ''}`;
+      const extra = pw ? `<div class="addons"><label class="opt pw"><input type="checkbox" data-pw${hasPower ? ' checked' : ''}> <span>${esc(pw.label || pw.name)}</span></label><p class="ln">${esc(pw.note)}</p></div>` : '';
+      const total = tbc ? `<div class="tot"><span>Total</span><b>To be confirmed</b></div><p class="ln">${known ? `Priced items: ${money(known)}. ` : ''}Model prices are to be confirmed.</p>` : `<div class="tot"><span>Total</span><b>${money(known)}</b></div>${from ? `<p class="ln">Includes installation by licensed plumber (${money(inst.price)}*).</p>` : ''}`;
       return { html, extra, total, inst };
     }
     function paint() {
@@ -371,7 +372,10 @@
         st.innerHTML = `<b>${esc(msg)}</b> To order now, <a href="${withTags(BP + '/register/')}">start a free assessment</a> or call <a href="tel:1300709100">${PHONE}</a>.`;
       }
     });
-    document.addEventListener('change', (e) => { const t = e.target.closest('[data-inst]'); if (t) { cart.items[+t.dataset.inst].install = t.checked; save(); } });
+    document.addEventListener('change', (e) => {
+      const t = e.target.closest('[data-inst]'); if (t) { cart.items[+t.dataset.inst].install = t.checked; save(); return; }
+      const p = e.target.closest('[data-pw]'); if (p) { if (p.checked) { if (!find('power')) add('power'); } else { cart.items = cart.items.filter((x) => x.id !== 'power'); save(); } }
+    });
     // drawer
     const dr = $('#cart-drawer');
     const openDrawer = () => { if (!dr || !dr.showModal) return false; dr.showModal(); requestAnimationFrame(() => dr.classList.add('open')); return true; };

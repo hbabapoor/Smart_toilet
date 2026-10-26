@@ -52,21 +52,23 @@
   {
    "id": "install",
    "sku": "LOR-INSTALL",
-   "name": "Licensed plumber install",
+   "name": "Installation by licensed plumber",
    "price": 990,
    "from": true,
    "per_model": true,
    "note": "*Licensed plumber, Sydney metro, water outlet beside the toilet.",
-   "behind": "If the water outlet is behind the toilet: send us a photo and we'll tell you what's needed."
+   "behind": "If the water outlet is behind the toilet: send us a photo and we'll tell you what's needed.",
+   "label": "Add installation by licensed plumber ($990*)"
   },
   {
    "id": "power",
    "sku": "LOR-POWER",
-   "name": "Power point",
+   "name": "Power point by licensed electrician",
    "price": 1100,
    "from": false,
    "standalone": true,
-   "note": "A fixed price across Sydney metro, and it can be booked on its own. Every model needs a power point near the toilet."
+   "note": "A fixed price across Sydney metro, and it can be booked on its own. Every model needs a power point near the toilet.",
+   "label": "Add power point by licensed electrician (+$1,100)"
   }
  ],
  "prices_include_gst": true
