@@ -338,7 +338,10 @@
       const pwOpt = pw ? card('data-pw', hasPower, pw.label || pw.name) : '';
       const notes = [inst && instOpts ? inst.note : '', pw ? pw.note : ''].filter(Boolean).map((x) => `<p>${esc(x)}</p>`).join('');
       const extra = instOpts || pwOpt ? `<div class="addons" role="group" aria-label="Add-ons">${instOpts}${pwOpt}</div>${notes ? `<div class="addon-notes">${notes}</div>` : ''}` : '';
-      const total = tbc ? `<div class="tot"><span>Total</span><b>To be confirmed</b></div><p class="ln">${known ? `Priced items: ${money(known)}. ` : ''}Model prices are to be confirmed.</p>` : `<div class="tot"><span>Total</span><b>${money(known)}</b></div>${from ? `<p class="ln">Includes installation by licensed plumber (${money(inst.price)}*).</p>` : ''}`;
+      // one "Includes ..." line per ticked add-on, nothing when neither is ticked
+      const includes = [from && inst ? `Includes installation by licensed plumber (${money(inst.price)}*).` : '', hasPower && pw ? `Includes power point by licensed electrician (+${money(pw.price)}).` : '']
+        .filter(Boolean).map((x) => `<p class="ln inc">${esc(x)}</p>`).join('');
+      const total = tbc ? `<div class="tot"><span>Total</span><b>To be confirmed</b></div><p class="ln">${known ? `Priced items: ${money(known)}. ` : ''}Model prices are to be confirmed.</p>` : `<div class="tot"><span>Total</span><b>${money(known)}</b></div>${includes}`;
       return { html, extra, total, inst };
     }
     function paint() {
