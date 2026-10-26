@@ -20,51 +20,52 @@
     tio.observe(tg);
   }
 
-  // ---- home collection: pinned horizontal scroll ----
-  // The section sticks while the card row slides left with the page scroll, then the page carries on.
-  // Off (plain swipe/scroll-snap row) for reduced motion, no JS, or when the cards don't fit the screen height.
-  const hs = $('[data-hs]');
-  if (hs) {
-    const pin = $('.hs-pin', hs), view = $('.hs-view', hs), track = $('.hs-track', hs), bar = $('.hs-bar span', hs);
+  // ---- home collection: expanding-card accordion, pinned to the scroll ----
+  // The section sticks while K1 → K31 → K4 → K68 → K73 expand in turn with the page scroll, then the page carries on.
+  // Mouse hover or keyboard focus expands a card; a tap on a collapsed card expands it, a tap on the expanded one opens it.
+  // Off (static grid) for reduced motion, no JS, or screens too short for the row.
+  const acc = $('[data-acc]');
+  if (acc) {
+    const row = $('.acc-row', acc), cards = $$('.ac', acc), bar = $('.acc-bar span', acc), N = cards.length;
     const mq = matchMedia('(prefers-reduced-motion: reduce)');
-    let on = false, max = 0, x = 0, tick = 0, lastW = 0;
+    let on = false, step = 1, tick = 0, lastW = 0, scrollIdx = -1;
+    const set = (i) => cards.forEach((c, k) => c.classList.toggle('on', k === i));
+    const top = () => acc.getBoundingClientRect().top + scrollY;
+    const idxAt = (y) => Math.min(N - 1, Math.max(0, Math.floor(y / step)));
     const paint = () => {
       tick = 0; if (!on) return;
-      const p = Math.min(1, Math.max(0, -hs.getBoundingClientRect().top / max));
-      x = p * max; track.style.transform = `translate3d(${(-x).toFixed(1)}px,0,0)`; if (bar) bar.style.transform = `scaleX(${p.toFixed(4)})`;
+      const y = -acc.getBoundingClientRect().top, i = idxAt(y);
+      if (bar) bar.style.transform = `scaleX(${Math.min(1, Math.max(0, y / (step * N))).toFixed(4)})`;
+      if (i !== scrollIdx) { scrollIdx = i; set(i); }
     };
-    const off = () => { on = false; hs.classList.remove('on'); hs.style.height = ''; track.style.transform = ''; };
+    const off = () => { on = false; acc.classList.remove('on'); acc.style.height = ''; };
     const measure = () => {
       lastW = innerWidth;
-      if (mq.matches) return off();
-      hs.classList.add('on');
-      max = Math.round(track.offsetWidth - view.clientWidth);
-      if (max < 8 || track.offsetHeight + 24 > pin.clientHeight) return off();
-      hs.style.height = (pin.offsetHeight + max) + 'px'; // 1px of page scroll moves the row 1px
-      on = true; view.scrollLeft = 0; paint();
+      if (mq.matches || innerHeight < 500) return off();
+      acc.classList.add('on');
+      step = Math.round(innerHeight * 0.45);
+      acc.style.height = (innerHeight + step * N) + 'px'; // one step of scroll per card, then the page carries on
+      on = true; scrollIdx = -1; paint();
     };
     const req = () => { if (!tick) { tick = 1; requestAnimationFrame(paint); } };
     addEventListener('scroll', req, { passive: true });
     addEventListener('resize', () => { if (innerWidth !== lastW) measure(); else req(); }); // height-only resizes (mobile address bar) don't re-measure
     addEventListener('orientationchange', () => setTimeout(measure, 120));
     addEventListener('load', measure);
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(measure);
     if (mq.addEventListener) mq.addEventListener('change', measure);
-    if ('ResizeObserver' in window) { let rw = 0, rh = 0; new ResizeObserver(([en]) => { const w = Math.round(en.contentRect.width), h = Math.round(en.contentRect.height); if (w !== rw || h !== rh) { rw = w; rh = h; measure(); } }).observe(track); }
-    view.addEventListener('scroll', () => { if (on && view.scrollLeft) view.scrollLeft = 0; });
-    // Keyboard: tabbing to a card scrolls the page so the whole card is in view.
-    const reveal = (c) => {
-      if (!on) return;
-      view.scrollLeft = 0;
-      const top = hs.getBoundingClientRect().top + scrollY, cur = Math.min(max, Math.max(0, scrollY - top));
-      const pad = parseFloat(getComputedStyle(track).paddingLeft) || 0, vw = view.clientWidth, L = c.offsetLeft, R = L + c.offsetWidth;
-      let t = cur; if (L - pad < cur) t = L - pad; else if (R + pad > cur + vw) t = R + pad - vw;
-      t = Math.min(max, Math.max(0, t));
-      if (Math.abs(t - cur) > 1 || scrollY < top - 1 || scrollY > top + max + 1) scrollTo({ top: top + t, behavior: 'auto' });
-    };
-    view.addEventListener('focusin', (e) => {
-      const c = e.target.closest('.hc'); if (!c || !on) return;
-      reveal(c); requestAnimationFrame(() => reveal(c));
+    cards.forEach((c, i) => c.addEventListener('pointerenter', (e) => { if (on && e.pointerType === 'mouse') set(i); }));
+    // Keyboard: focusing a card expands it and scrolls the page to that card's step, so the pin is in view; Enter opens it.
+    row.addEventListener('focusin', (e) => {
+      const c = e.target.closest('.ac'); if (!c || !on) return;
+      if (e.target.matches && !e.target.matches(':focus-visible')) return; // a tap or click, not the keyboard
+      const i = +c.dataset.i, y = scrollY - top();
+      set(i); scrollIdx = i;
+      if (y < 0 || y > step * N || idxAt(y) !== i) scrollTo({ top: top() + i * step + Math.round(step / 2), behavior: 'auto' });
+    });
+    // Touch: the first tap on a collapsed card expands it instead of opening it.
+    row.addEventListener('click', (e) => {
+      const a = e.target.closest('.ac-cover'); if (!a || !on) return;
+      const c = a.closest('.ac'); if (!c.classList.contains('on')) { e.preventDefault(); set(+c.dataset.i); }
     });
     measure();
   }
