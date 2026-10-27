@@ -20,72 +20,160 @@
     tio.observe(tg);
   }
 
-  // ---- home collection: expanding-card accordion, pinned to the scroll ----
-  // The section sticks while K1 → K31 → K4 → K68 → K73 expand in turn with the page scroll, then the page carries on.
-  // Mouse hover or keyboard focus expands a card; a tap on a collapsed card expands it, a tap on the expanded one opens it.
-  // Off (static grid) for reduced motion, no JS, or screens too short for the row.
+  // ---- home collection: expanding-card accordion, step-by-step ----
+  // The section locks on K1 when it reaches the top of the screen (whatever the scroll speed). Each separate gesture (one swipe,
+  // one wheel or trackpad flick, one key press) moves exactly one card with a ~0.5s transition; input is ignored until that has
+  // finished plus a short cooldown. On K1 an upward gesture, and on K73 a downward gesture, releases the page. Dots, the counter
+  // and Skip jump. Off (a static list of cards) for reduced motion, no JS, or screens too short for the row.
+  // Locking: phones fix the body (this also stops scroll momentum on iOS); desktops keep the scroll position and swallow wheel and
+  // key input. Safety unlocks: anchors, focus leaving, resize, other scrolling, layout shifts, page restore.
   const acc = $('[data-acc]');
   if (acc) {
-    const row = $('.acc-row', acc), cards = $$('.ac', acc), bar = $('.acc-bar span', acc), cnt = $('[data-acc-n]', acc), N = cards.length;
-    const mq = matchMedia('(prefers-reduced-motion: reduce)'), phone = matchMedia('(max-width:700px)');
-    let on = false, step = 1, tick = 0, lastW = 0, scrollIdx = -1, soft = false;
-    const set = (i) => { cards.forEach((c, k) => c.classList.toggle('on', k === i)); if (cnt) cnt.textContent = String(i + 1); };
-    const top = () => acc.getBoundingClientRect().top + scrollY;
-    const idxAt = (y) => Math.min(N - 1, Math.max(0, Math.floor(y / step)));
-    const paint = () => {
-      tick = 0; if (!on) return;
-      const y = -acc.getBoundingClientRect().top, i = idxAt(y);
-      if (bar) bar.style.transform = `scaleX(${Math.min(1, Math.max(0, y / (step * N))).toFixed(4)})`;
-      if (i !== scrollIdx) { scrollIdx = i; set(i); }
+    const cards = $$('.ac', acc), cnt = $('[data-acc-n]', acc), dots = $$('[data-acc-dot]', acc), live = $('[data-acc-live]', acc), N = cards.length;
+    const mq = matchMedia('(prefers-reduced-motion: reduce)'), coarse = matchMedia('(pointer: coarse), (max-width: 700px)');
+    const TOUCH_COOL = 750, STEP_COOL = 560, QUIET = 150;
+    let on = false, locked = false, fixedOn = false, idx = 0, lockY = 0, busyUntil = 0, prevTop = null, lastW = innerWidth, watch = 0, swallow = false;
+    let tDown = false, tBlock = false, tFired = false, tY = 0, wFired = true, wLast = 0, wLow = Infinity, mx = -1, my = -1;
+    const now = () => performance.now(), H = () => acc.offsetHeight, topNow = () => acc.getBoundingClientRect().top;
+    const absTop = () => Math.round(topNow() + (fixedOn ? lockY : scrollY));
+    const nameOf = (i) => (cards[i].querySelector('h3') || {}).textContent || '';
+    const set = (i, quiet) => {
+      idx = i; cards.forEach((c, k) => c.classList.toggle('on', k === i));
+      if (cnt) cnt.textContent = String(i + 1);
+      dots.forEach((d, k) => d.setAttribute('aria-current', k === i ? 'true' : 'false'));
+      if (live && !quiet) live.textContent = nameOf(i) + ', ' + (i + 1) + ' of ' + N;
     };
-    const off = () => { on = false; acc.classList.remove('on'); acc.style.height = ''; soft = false; };
-    // Phones: a gentle, one-way settle (our own proximity snap). When the scroll comes to rest with no finger down and the
-    // open card's centre is just ahead in the direction you were scrolling (within 30% of its distance), the page glides
-    // there so the card sits centred. It never pulls you back, never moves to another card, and a fast flick is left alone
-    // until it has finished, so the page can always move on.
-    let down = false, idle = 0, lastY = scrollY, dir = 0;
-    const settle = () => {
-      idle = 0; if (!on || !soft || down) return;
-      const y = scrollY - top(); if (y < 0 || y >= step * N) return;
-      const d = (idxAt(y) + 0.5) * step - y; // > 0: centre is further down
-      if (Math.abs(d) < 3 || Math.abs(d) > step * 0.3 || (Math.abs(d) > 24 && Math.sign(d) !== dir)) return;
-      scrollTo({ top: Math.round(scrollY + d), behavior: mq.matches ? 'auto' : 'smooth' });
+    const fix = (y) => { const b = document.body.style; b.position = 'fixed'; b.top = -y + 'px'; b.left = '0'; b.right = '0'; b.width = '100%'; };
+    const unfix = () => { const b = document.body.style; b.position = b.top = b.left = b.right = b.width = ''; };
+    const lock = (i) => {
+      if (locked) return;
+      const y = Math.max(0, absTop()); lockY = y; locked = true; fixedOn = coarse.matches;
+      if (fixedOn) fix(y); else scrollTo(0, y); // snap the section to the top of the screen; on phones the fixed body also kills momentum
+      R.classList.add('acc-locked'); acc.classList.add('lk');
+      set(i); busyUntil = now() + 350;
+      if (tDown) { tBlock = true; tFired = true; } // the swipe that ran into the section is not a card swipe
+      watch = setInterval(check, 500);
     };
-    const rest = () => { clearTimeout(idle); idle = setTimeout(settle, 160); };
-    addEventListener('touchstart', () => { down = true; clearTimeout(idle); }, { passive: true });
-    addEventListener('touchend', () => { down = false; rest(); }, { passive: true });
-    addEventListener('touchcancel', () => { down = false; rest(); }, { passive: true });
-    addEventListener('scroll', () => { const y = scrollY; if (y !== lastY) dir = y > lastY ? 1 : -1; lastY = y; if (soft && !down) rest(); }, { passive: true });
+    const unlock = () => {
+      if (!locked) return;
+      locked = false; clearInterval(watch);
+      if (fixedOn) { unfix(); scrollTo(0, lockY); fixedOn = false; }
+      R.classList.remove('acc-locked'); acc.classList.remove('lk'); prevTop = 0;
+    };
+    // safety net: if the layout moved under the lock (fonts, images, resize), follow it; never leave the page stuck
+    const check = () => {
+      if (!locked) return;
+      const t = topNow(); if (Math.abs(t) <= 2) return;
+      if (fixedOn) { lockY = Math.max(0, lockY + t); document.body.style.top = -lockY + 'px'; } else scrollTo(0, scrollY + t);
+    };
+    const release = (dir) => {
+      const y = lockY; unlock(); swallow = true;
+      scrollTo({ top: Math.max(0, y + dir * Math.round(innerHeight * 0.6)), behavior: 'smooth' }); // the page carries on
+    };
+    const go = (dir, src) => {
+      if (!locked) return false;
+      const t = now(); if (t < busyUntil) return false;
+      const j = idx + dir;
+      if (j < 0 || j >= N) { release(dir); return true; }
+      set(j); busyUntil = t + (src === 'touch' ? TOUCH_COOL : STEP_COOL); return true;
+    };
+    const jump = (i) => {
+      if (i === idx) return;
+      set(i); if (locked) busyUntil = now() + STEP_COOL;
+    };
     const measure = () => {
-      lastW = innerWidth;
-      if (mq.matches || innerHeight < 500) return off();
-      acc.classList.add('on');
-      // Phones: each model gets its own ~90vh of scroll, so the open card holds while you read it. Desktop keeps 45vh.
-      step = Math.round(innerHeight * (phone.matches ? 0.9 : 0.45));
-      acc.style.height = (innerHeight + step * N) + 'px'; // one step of scroll per card, then the page carries on
-      on = true; scrollIdx = -1; soft = phone.matches; paint();
+      unlock(); lastW = innerWidth; prevTop = null;
+      if (mq.matches || innerHeight < 500) { on = false; acc.classList.remove('on'); return; }
+      on = true; acc.classList.add('on'); prevTop = topNow(); set(topNow() < 0 ? N - 1 : 0, true);
     };
-    const req = () => { if (!tick) { tick = 1; requestAnimationFrame(paint); } };
-    addEventListener('scroll', req, { passive: true });
-    addEventListener('resize', () => { if (innerWidth !== lastW) measure(); else req(); }); // height-only resizes (mobile address bar) don't re-measure
+    // entering: crossing the top of the screen going down locks on K1; coming back up from below locks on K73
+    const onScroll = () => {
+      if (!on) return;
+      const t = topNow();
+      if (locked) { if (!fixedOn && Math.abs(t) > 3) { unlock(); prevTop = t; } return; } // something else moved the page (scrollbar, find-in-page): let go
+      const h = H();
+      if (prevTop !== null) {
+        if (prevTop > 0.5 && t <= 0.5 && t > -h * 0.5) lock(0);
+        else if (prevTop < -0.5 && t >= -0.5 && t < h * 0.5) lock(N - 1);
+      }
+      if (!locked) { prevTop = t; if (t < -h * 0.9 && idx !== N - 1) set(N - 1, true); else if (t > innerHeight * 0.9 && idx !== 0) set(0, true); }
+    };
+    addEventListener('scroll', onScroll, { passive: true });
+    // touch: a swipe past ~22px is one gesture = one card (or the release); further movement in the same touch is ignored
+    addEventListener('touchstart', (e) => { tDown = true; tFired = false; tBlock = locked; if (e.touches[0]) tY = e.touches[0].clientY; }, { passive: true });
+    addEventListener('touchmove', (e) => {
+      if (!on || !(locked || tBlock) || e.touches.length > 1) return;
+      if (e.cancelable) e.preventDefault();
+      if (tFired || !locked) return;
+      const dy = tY - e.touches[0].clientY;
+      if (Math.abs(dy) >= 22) { tFired = true; go(dy > 0 ? 1 : -1, 'touch'); }
+    }, { passive: false });
+    const tEnd = () => { tDown = false; tBlock = false; };
+    addEventListener('touchend', tEnd, { passive: true }); addEventListener('touchcancel', tEnd, { passive: true });
+    // wheel / trackpad: a stream of events is one gesture until it goes quiet for 150ms; a clear fresh flick during the tail counts again
+    addEventListener('wheel', (e) => {
+      if (!on || e.ctrlKey) return;
+      const t = now(), quiet = t - wLast > QUIET; wLast = t;
+      if (quiet) { wLow = Infinity; swallow = false; }
+      const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1);
+      if (!locked) { wFired = true; if (swallow) e.preventDefault(); return; } // a burst already running when we lock is swallowed, not counted
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      e.preventDefault();
+      if (quiet) wFired = false;
+      const a = Math.abs(dy); if (a < 4) return;
+      if (!wFired) { wFired = true; wLow = a; go(dy > 0 ? 1 : -1, 'wheel'); return; }
+      if (a < wLow) wLow = a;
+      else if (a >= Math.max(40, wLow * 3) && t >= busyUntil) { wLow = a; go(dy > 0 ? 1 : -1, 'wheel'); }
+    }, { passive: false });
+    // keyboard: arrows, PageUp/PageDown and Space (Shift+Space back) step one card; focus follows so it stays visible
+    addEventListener('keydown', (e) => {
+      if (!on || !locked || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+      const t = e.target; if (t && t.closest && t.closest('input,textarea,select,[contenteditable]')) return;
+      let d = 0; const k = e.key;
+      if (k === 'ArrowDown' || k === 'ArrowRight' || k === 'PageDown') d = 1;
+      else if (k === 'ArrowUp' || k === 'ArrowLeft' || k === 'PageUp') d = -1;
+      else if (k === ' ' || k === 'Spacebar') { if (t && t.closest && t.closest('button')) return; d = e.shiftKey ? -1 : 1; }
+      else return;
+      e.preventDefault();
+      if (go(d, 'key') && locked) { const c = cards[idx].querySelector('.ac-cover'); if (c) c.focus({ preventScroll: true }); }
+    });
+    // controls
+    dots.forEach((d, i) => d.addEventListener('click', () => jump(i)));
+    const cn = $('[data-acc-count]', acc); if (cn) cn.addEventListener('click', () => jump((idx + 1) % N));
+    const skip = $('[data-acc-skip]', acc);
+    if (skip) skip.addEventListener('click', (e) => {
+      e.preventDefault(); const a = absTop(), h = H(); unlock(); scrollTo(0, a + h);
+      const nx = document.getElementById((skip.getAttribute('href') || '').slice(1)); if (nx) nx.focus({ preventScroll: true });
+    });
+    cards.forEach((c, i) => c.addEventListener('pointermove', (e) => {
+      const moved = Math.abs(e.clientX - mx) + Math.abs(e.clientY - my) >= 3; mx = e.clientX; my = e.clientY;
+      if (on && e.pointerType === 'mouse' && moved && i !== idx && now() > busyUntil + 300) jump(i); // real mouse movement only, never layout-driven
+    }));
+    // a tap on a collapsed card expands it; a tap on the open card opens it
+    $('.acc-row', acc).addEventListener('click', (e) => {
+      const a = e.target.closest('.ac-cover'); if (!a || !on) return;
+      const c = a.closest('.ac'); if (!c.classList.contains('on')) { e.preventDefault(); jump(+c.dataset.i); }
+    });
+    // keyboard focus: tabbing into the section locks on that card; tabbing out lets the page go
+    addEventListener('focusin', (e) => {
+      if (!on) return; const t = e.target;
+      if (t !== document && acc.contains(t)) {
+        if (t.matches && !t.matches(':focus-visible')) return; // a tap or click, not the keyboard
+        const c = t.closest('.ac'), i = c ? +c.dataset.i : (topNow() < 0 ? N - 1 : idx);
+        if (!locked) { prevTop = 0; lock(i); } else if (i !== idx) { set(i); busyUntil = now() + STEP_COOL; }
+      } else if (locked && t !== document && t.scrollIntoView) { unlock(); t.scrollIntoView({ block: 'center' }); }
+    });
+    // no traps: in-page links, the back/forward cache, a changed width, reduced motion switched on
+    document.addEventListener('click', (e) => { const a = e.target.closest && e.target.closest('a[href^="#"]'); if (locked && a && !a.hasAttribute('data-acc-skip')) unlock(); }, true);
+    addEventListener('hashchange', () => { if (locked) unlock(); });
+    addEventListener('pageshow', (e) => { if (e.persisted) { unlock(); measure(); } });
+    addEventListener('resize', () => { if (innerWidth !== lastW) measure(); else check(); }); // height-only (mobile address bar): stay locked
     addEventListener('orientationchange', () => setTimeout(measure, 120));
     addEventListener('load', measure);
     if (mq.addEventListener) mq.addEventListener('change', measure);
-    cards.forEach((c, i) => c.addEventListener('pointerenter', (e) => { if (on && e.pointerType === 'mouse') set(i); }));
-    // Keyboard: focusing a card expands it and scrolls the page to that card's step, so the pin is in view; Enter opens it.
-    row.addEventListener('focusin', (e) => {
-      const c = e.target.closest('.ac'); if (!c || !on) return;
-      if (e.target.matches && !e.target.matches(':focus-visible')) return; // a tap or click, not the keyboard
-      const i = +c.dataset.i, y = scrollY - top();
-      set(i); scrollIdx = i;
-      if (y < 0 || y > step * N || idxAt(y) !== i) scrollTo({ top: top() + i * step + Math.round(step / 2), behavior: 'auto' });
-    });
-    // Touch: the first tap on a collapsed card expands it instead of opening it.
-    row.addEventListener('click', (e) => {
-      const a = e.target.closest('.ac-cover'); if (!a || !on) return;
-      const c = a.closest('.ac'); if (!c.classList.contains('on')) { e.preventDefault(); set(+c.dataset.i); }
-    });
     measure();
+    // test hook (read-only state)
+    acc.accState = () => ({ on, locked, fixedOn, idx, lockY, busy: Math.max(0, Math.round(busyUntil - now())) });
   }
 
   // ---- gentle parallax (home only, skipped for reduced motion) ----
