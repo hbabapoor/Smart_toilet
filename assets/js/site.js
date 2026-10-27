@@ -20,6 +20,90 @@
     tio.observe(tg);
   }
 
+  // ---- home hero: scroll-scrubbed "lid opens, then side view" (sticky pin + rAF, progress comes from scroll position only) ----
+  // Never prevents default and never intercepts wheel/touch/keys, so scrolling UP (and down) is always free. Off for reduced motion,
+  // data-saver and short screens; the static front K1 hero is the fallback (and what no-JS shows).
+  /*HERO-MAP-START*/
+  const heroMap = (p) => {
+    const cl = (x) => Math.min(1, Math.max(0, x));
+    const ss = (a, b, x) => { x = cl((x - a) / (b - a)); return x * x * (3 - 2 * x); };
+    const lerp = (a, b, t) => a + (b - a) * t;
+    p = cl(p);
+    const a = ss(0.06, 0.22, p), b = ss(0.22, 0.44, p), c = ss(0.56, 0.86, p), c1 = ss(0, 0.20, p), c2 = ss(0.56, 0.90, p);
+    const s = lerp(lerp(1, 0.80, c1), 0.95, c2);
+    const ty = lerp(lerp(0, 29.3, c1), -6.6, c2); // % of the product box height (units: 286 -> 29.3%, -65 -> -6.6%)
+    return {
+      o: [1 - a, a * (1 - b), b * (1 - c), c], // front, lid part-way, lid open, side
+      s, ty, rot: [0, 0, 16 * c, -16 * (1 - c)],
+      cap: p < 0.14 ? 'I / V' : p < 0.62 ? 'Lid open' : 'Side view'
+    };
+  };
+  /*HERO-MAP-END*/
+  const hero = $('[data-hero]');
+  const hsOK = hero && !RM && !(navigator.connection && navigator.connection.saveData) && CSS.supports && CSS.supports('overflow', 'clip') && $('[data-hf]', hero);
+  if (hsOK) {
+    const prodEl = $('.prod', hero), wrapEl = $('.wrap', hero), stickEl = $('.pin', hero), capEl = $('[data-hero-cap]', hero);
+    const frames = $$('[data-hf]', hero), mqM = matchMedia('(max-width:900px)'), mqRM = matchMedia('(prefers-reduced-motion: reduce)');
+    let mode = '', dist = 1, start = 0, target = 0, cur = 0, raf = 0, lastCap = '', loaded = false, measured = false;
+    const clamp01 = (x) => Math.min(1, Math.max(0, x));
+    const off = () => { mode = ''; hero.classList.remove('hs', 'hs-d', 'hs-m'); hero.style.removeProperty('--hd'); prodEl.style.transform = ''; frames.forEach((f) => { f.style.opacity = ''; f.style.transform = ''; }); const f0 = $('.hf0', hero); if (f0) f0.style.opacity = ''; if (capEl) capEl.textContent = 'I / V'; lastCap = ''; };
+    const measure = () => {
+      off(); if (mqRM.matches) return;
+      const vh = innerHeight, mobile = mqM.matches, D = Math.round(vh * 1.25);
+      if (mobile) {
+        if (vh < 560) return;
+        hero.classList.add('hs', 'hs-m'); hero.style.setProperty('--hd', '0px');
+        if (stickEl.offsetHeight > vh - 8) { off(); return; } // photo + text + buttons must all fit on screen while pinned
+        const hh = $('.hh', hero), off0 = hh ? hh.offsetHeight : 0; // headline block above the pinned photo
+        const natural = wrapEl.offsetHeight - stickEl.offsetHeight - off0;
+        hero.style.setProperty('--hd', Math.max(0, D - natural) + 'px');
+        // progress runs while the photo is pinned: it starts when the headline block has scrolled away and ends when the pin releases
+        start = Math.max(0, off0 - 2);
+        dist = Math.max(1, wrapEl.offsetHeight - stickEl.offsetHeight - start); mode = 'm';
+      } else {
+        if (vh < 600) return;
+        hero.classList.add('hs', 'hs-d'); hero.style.setProperty('--hd', D + 'px');
+        if (wrapEl.offsetHeight > vh + 1) { off(); return; } // the pinned view must hold headline, text, buttons and photo without cropping
+        start = 0;
+        dist = Math.max(1, hero.offsetHeight - wrapEl.offsetHeight); mode = 'd';
+      }
+      measured = true; cur = target = progress(); paint(cur); loadFrames();
+    };
+    const progress = () => { if (!mode) return 0; const top = (mode === 'm' ? wrapEl : hero).getBoundingClientRect().top; return clamp01((-top - start) / dist); };
+    const paint = (p) => {
+      const m = heroMap(p);
+      prodEl.style.transform = 'translate3d(0,' + m.ty.toFixed(3) + '%,0) scale(' + m.s.toFixed(4) + ')';
+      const f0 = $('.hf0', hero); f0.style.opacity = m.o[0].toFixed(3);
+      for (let i = 0; i < 3; i++) { const f = frames[i]; f.style.opacity = m.o[i + 1].toFixed(3); f.style.transform = m.rot[i + 1] ? 'perspective(1100px) rotateY(' + m.rot[i + 1].toFixed(2) + 'deg)' : ''; }
+      if (m.cap !== lastCap) { lastCap = m.cap; if (capEl) capEl.textContent = m.cap; }
+    };
+    const tick = () => {
+      raf = 0; target = progress();
+      const d = target - cur;
+      if (Math.abs(d) < 0.0006) cur = target; else cur += d * 0.2;
+      paint(cur);
+      if (cur !== target) raf = requestAnimationFrame(tick);
+    };
+    const kick = () => { if (mode && !raf) raf = requestAnimationFrame(tick); };
+    function loadFrames() {
+      if (loaded) return; loaded = true;
+      const go = () => frames.forEach((f) => {
+        $$('source', f).forEach((so) => { so.srcset = so.getAttribute('data-srcset'); });
+        const im = $('img', f); im.src = im.getAttribute('data-src'); if (im.decode) im.decode().catch(() => {});
+      });
+      let done = false; const once = () => { if (done) return; done = true; go(); };
+      addEventListener('scroll', once, { once: true, passive: true });
+      const idle = () => (window.requestIdleCallback ? requestIdleCallback(once, { timeout: 2500 }) : setTimeout(once, 1200));
+      if (document.readyState === 'complete') idle(); else addEventListener('load', idle, { once: true });
+    }
+    let rs = 0; const remeasure = () => { if (rs) return; rs = requestAnimationFrame(() => { rs = 0; measure(); kick(); }); };
+    addEventListener('scroll', kick, { passive: true });
+    addEventListener('resize', remeasure); addEventListener('orientationchange', remeasure);
+    (mqRM.addEventListener ? mqRM.addEventListener('change', remeasure) : 0);
+    measure();
+    hero.heroState = () => ({ on: !!mode, mode, p: +target.toFixed(4), cur: +cur.toFixed(4), dist, start, map: heroMap(cur) });
+  }
+
   // ---- home collection: expanding-card accordion, step-by-step ----
   // Going DOWN: the section locks on K1 when it reaches the top of the screen (whatever the scroll speed). Each separate gesture (one
   // swipe, one wheel or trackpad flick, one key press) moves exactly one card with a ~0.5s transition; input is ignored until that
@@ -187,13 +271,14 @@
     acc.accState = () => ({ on, locked, fixedOn, idx, lockY, busy: Math.max(0, Math.round(busyUntil - now())) });
   }
 
+
   // ---- gentle parallax (home only, skipped for reduced motion) ----
   const prod = $('.prod'), fr = $('.frame');
   if (!RM && (prod || fr)) {
     let t = 0;
     const f = () => {
       t = 0; const y = scrollY;
-      if (prod && y < innerHeight * 1.2) prod.style.setProperty('--py', (y * 0.12) + 'px');
+      if (prod && y < innerHeight * 1.2 && !(hero && hero.classList.contains('hs'))) prod.style.setProperty('--py', (y * 0.12) + 'px');
       if (fr) { const r = fr.getBoundingClientRect(); fr.style.setProperty('--fy', Math.max(0, Math.min(1, (innerHeight - r.top) / (innerHeight + r.height)))); }
     };
     addEventListener('scroll', () => { if (!t) { t = 1; requestAnimationFrame(f); } }, { passive: true }); f();
