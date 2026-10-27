@@ -509,12 +509,17 @@
         const st = t.closest('[data-cart-view]').querySelector('.co-status');
         t.disabled = true; st.className = 'status co-status'; st.textContent = 'Checking…';
         let msg = 'Checkout not yet enabled.';
-        try {
-          const r = await fetch((API || BP) + '/api/checkout', { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ items: cart.items, ...(qModel() ? { quote: { id: cart.quote.id } } : {}), utm: TAGS.reduce((o, k) => (tags[k] ? { ...o, [k]: tags[k] } : o), {}) }) });
-          const j = await r.json().catch(() => ({}));
-          if (r.ok && j.ok && j.url) { location.href = j.url; return; }
-          if (j.error) msg = j.error;
-        } catch { /* static host without functions: same message */ }
+        // The static preview (a sub-path host such as GitHub Pages) has no payment endpoint unless one is configured at build time
+        // (--api https://...). Say so plainly: nothing is charged and no order is placed.
+        const NOEP = 'Online payment is not switched on for this sample site yet. Nothing has been charged and no order has been placed.';
+        if (!API && BP) msg = NOEP;
+        else try {
+          // Prices are never sent: the server prices the cart. Only ids, quantities, the quote id, flags and the attribution tags go up.
+          const r = await fetch((API || BP) + '/api/checkout', { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ items: cart.items, ...(qModel() ? { quote: { id: cart.quote.id } } : {}), noInstall: !!cart.noInstall, base: BP, utm: TAGS.reduce((o, k) => (tags[k] ? { ...o, [k]: tags[k] } : o), {}) }) });
+          const j = await r.json().catch(() => null);
+          if (r.ok && j && j.ok && j.url) { location.href = j.url; return; }
+          msg = j && j.error ? j.error : NOEP; // no JSON back = no endpoint behind this address
+        } catch { msg = NOEP; }
         t.disabled = false; st.className = 'status co-status bad';
         st.innerHTML = `<b>${esc(msg)}</b> To order now, <a href="${withTags(BP + '/register/')}">start a free assessment</a> or call <a href="tel:1300709100">${PHONE}</a>.`;
       }
@@ -592,12 +597,39 @@
 
   // ---- order confirmation (/order-confirmed/?order=...): show the number and carry it to /register/ and /book-installation/ ----
   if ($('[data-order-confirmed]')) {
+    const sid = params.get('session_id') || '', API2 = meta('lorentis-api');
+    const showVariant = (v) => $$('[data-oc]').forEach((el) => { el.hidden = el.dataset.oc !== v; });
+    const note = (html) => { const n = $('[data-oc-note]'); if (n) { n.innerHTML = html; n.hidden = false; } };
+    const eh = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    // Stripe sends buyers back with ?session_id=cs_... only. Everything shown comes from OUR server (which asks Stripe), never from the URL.
+    if (/^cs_(test|live)_[A-Za-z0-9]{10,200}$/.test(sid)) {
+      const sum = $('[data-oc-sum]'); $$('[data-oc]').forEach((el) => { el.hidden = true; });
+      if (sum) { sum.hidden = false; sum.textContent = 'Loading your order…'; }
+      fetch((API2 || BP) + '/api/order?session_id=' + encodeURIComponent(sid), { headers: { accept: 'application/json' } })
+        .then((r) => r.json().catch(() => null).then((j) => ({ r, j })))
+        .then(({ r, j }) => {
+          if (!r.ok || !j || !j.ok) throw new Error('order');
+          if (!j.paid) { if (sum) sum.hidden = true; note('<b>We have not received confirmation of your payment yet.</b> Please refresh this page in a moment, or call <a href="tel:1300709100">' + PHONE + '</a>.'); return; }
+          const money = (n) => '$' + Number(n).toLocaleString('en-AU', { maximumFractionDigits: 0 });
+          const bits = [j.model && ('LORENTIS ' + j.model + (j.qty > 1 ? ' × ' + j.qty : '')), j.amount != null && (money(j.amount) + ' paid, GST inclusive')].filter(Boolean);
+          const extra = [];
+          if (j.install_paid) extra.push('Installation by a licensed plumber: paid, at your quoted price' + (j.quote ? ' (quote ' + eh(j.quote) + ')' : ''));
+          if (j.power_paid) extra.push('Power point: paid, at your quoted price');
+          if (j.install_requested) extra.push('Installation requested: nothing charged now, we confirm the price after your free assessment');
+          if (j.power_requested) extra.push('Power point requested: +$1,100, nothing charged now');
+          if (j.no_install) extra.push('No installation needed');
+          if (sum) sum.innerHTML = '<b>' + eh(bits.join(' · ')) + '</b>' + (extra.length ? '<ul>' + extra.map((x) => '<li>' + x + '</li>').join('') + '</ul>' : '') + (j.email_masked ? '<small>Email on this order: ' + eh(j.email_masked) + '</small>' : '');
+          if (j.order) { $$('[data-order-no]').forEach((el) => { el.textContent = j.order; const w = el.closest('[hidden]'); if (w) w.hidden = false; }); $$('a[data-order-link]').forEach((a) => { const u = new URL(a.getAttribute('href'), location.href); u.searchParams.set('order', j.order); a.setAttribute('href', withTags(u.pathname + u.search + u.hash)); }); }
+          if (j.quote) { $$('[data-quote-no]').forEach((el) => { el.textContent = j.quote; }); showVariant('quote'); } else showVariant(j.no_install ? 'noinst' : 'std');
+        })
+        .catch(() => { if (sum) sum.hidden = true; showVariant('std'); note('<b>We could not load your order details right now.</b> If you were charged, please call <a href="tel:1300709100">' + PHONE + '</a> and we will confirm your order.'); });
+    }
     const o = orderParam(), qn = (params.get('quote') || '').toUpperCase();
-    if (/^Q-[A-Z0-9]{4,12}$/.test(qn)) { // quote buyers: toilet and install already paid, nothing to send
+    if (!sid && /^Q-[A-Z0-9]{4,12}$/.test(qn)) { // (old links) quote buyers: toilet and install already paid, nothing to send
       $$('[data-oc]').forEach((el) => { el.hidden = el.dataset.oc !== 'quote'; });
       $$('[data-quote-no]').forEach((el) => { el.textContent = qn; });
     }
-    if (o) {
+    if (o && !sid) {
       $$('[data-order-no]').forEach((el) => { el.textContent = o; const w = el.closest('[hidden]'); if (w) w.hidden = false; });
       $$('a[data-order-link]').forEach((a) => { const u = new URL(a.getAttribute('href'), location.href); u.searchParams.set('order', o); a.setAttribute('href', withTags(u.pathname + u.search + u.hash)); });
     }
