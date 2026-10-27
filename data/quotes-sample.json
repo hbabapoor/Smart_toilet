@@ -1,0 +1,17 @@
+{
+ "_readme": "PREVIEW ONLY. Sample quotes for the mock /quote/ page and the mock checkout check. Real quotes are written by staff after the free assessment and looked up server-side (see lib/quotes.js TODO). Amounts are GST inclusive.",
+ "quotes": [
+  {
+   "id": "Q-SAMPLE1",
+   "sample": true,
+   "issued": "27 October 2026",
+   "first_name": "Sam",
+   "suburb": "Ryde",
+   "model": "k1",
+   "install": 990,
+   "power": 1100,
+   "method": "Licensed plumber install, with the water outlet beside the toilet.",
+   "power_line": "New power point near the toilet."
+  }
+ ]
+}

@@ -19,7 +19,7 @@ a{color:#0F1B2D}
 </style>
 </head>
 <body style="margin:0;padding:0;background:#ECE6DC;">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#ECE6DC;">Thank you for your order. Next step: send us photos of your bathroom.</div>
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#ECE6DC;">{{^install_paid}}Thank you for your order. Next step: send us photos of your bathroom.{{/install_paid}}{{#install_paid}}Thank you for your order. Your toilet and install are paid for.{{/install_paid}}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ECE6DC;">
 <tr><td align="center" style="padding:24px 10px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#F5F2EC;">
@@ -34,7 +34,7 @@ a{color:#0F1B2D}
 <tr><td class="px" style="padding:42px 40px 8px;">
  <div style="font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;line-height:16px;letter-spacing:3px;color:#A88E57;text-transform:uppercase;">Order confirmed</div>
  <h1 class="h1" style="margin:12px 0 0;font-family:'Cormorant Garamond',Georgia,'Times New Roman',serif;font-weight:500;font-size:40px;line-height:46px;color:#0F1B2D;">Thank you, {{first_name}}. <i>Your order is in.</i></h1>
- <p style="margin:16px 0 0;font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:26px;color:#1A2230;">Your toilet is paid for. Install isn't charged now. We'll confirm the price after your free assessment.</p>
+ <p style="margin:16px 0 0;font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:26px;color:#1A2230;">{{^install_paid}}Your toilet is paid for. Install isn't charged now. We'll confirm the price after your free assessment.{{/install_paid}}{{#install_paid}}Your toilet and your install are paid for, at the price confirmed in your quote {{quote_id}}. There is nothing more to pay for the work in your quote.{{/install_paid}}</p>
 </td></tr>
 
 <!-- summary -->
@@ -43,7 +43,7 @@ a{color:#0F1B2D}
   <tr><td colspan="2" style="padding:16px 0 6px;font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;line-height:16px;letter-spacing:3px;color:#8A93A3;text-transform:uppercase;">Order {{order_number}}</td></tr>
   {{#items}}
   <tr>
-   <td style="padding:12px 0;border-bottom:1px solid #E2DACB;font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:24px;color:#1A2230;">LORENTIS {{model}}{{#qty_label}} &times; {{qty_label}}{{/qty_label}}{{#note}}<br><span style="font-size:13px;line-height:20px;color:#5E6573;">{{note}}</span>{{/note}}</td>
+   <td style="padding:12px 0;border-bottom:1px solid #E2DACB;font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:24px;color:#1A2230;">{{name}}{{#qty_label}} &times; {{qty_label}}{{/qty_label}}{{#note}}<br><span style="font-size:13px;line-height:20px;color:#5E6573;">{{note}}</span>{{/note}}</td>
    <td align="right" valign="top" style="padding:12px 0;border-bottom:1px solid #E2DACB;font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:24px;color:#1A2230;white-space:nowrap;">{{price}}</td>
   </tr>
   {{/items}}
@@ -62,6 +62,7 @@ a{color:#0F1B2D}
  {{/has_requests}}
 </td></tr>
 
+{{^install_paid}}
 <!-- next step -->
 <tr><td class="px" style="padding:36px 40px 8px;">
  <div style="font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;line-height:16px;letter-spacing:3px;color:#A88E57;text-transform:uppercase;">Next step</div>
@@ -99,6 +100,19 @@ a{color:#0F1B2D}
  </table>
 </td></tr>
 
+{{/install_paid}}
+{{#install_paid}}
+<!-- next step, quote buyers (install already paid) -->
+<tr><td class="px" style="padding:36px 40px 8px;">
+ <div style="font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;line-height:16px;letter-spacing:3px;color:#A88E57;text-transform:uppercase;">Next step</div>
+ <h2 style="margin:10px 0 0;font-family:'Cormorant Garamond',Georgia,'Times New Roman',serif;font-weight:500;font-size:30px;line-height:36px;color:#0F1B2D;">Your toilet arrives, <i>then pick your install day.</i></h2>
+ <p style="margin:12px 0 0;font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:26px;color:#1A2230;">We already have your photos and your install is confirmed, so there is nothing to send. Once your toilet has been delivered, choose a weekday morning or afternoon for your licensed plumber.</p>
+ <table role="presentation" cellpadding="0" cellspacing="0" border="0" class="btn" style="margin-top:20px;"><tr><td align="center" bgcolor="#0F1B2D" style="background:#0F1B2D;">
+  <a href="{{book_url}}" style="display:inline-block;padding:15px 28px;font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;line-height:16px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#F5F2EC;text-decoration:none;border:1px solid #C9B27C;">Choose your install day</a>
+ </td></tr></table>
+</td></tr>
+
+{{/install_paid}}
 <!-- help + footnote -->
 <tr><td class="px" style="padding:24px 40px 36px;font-family:Manrope,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:22px;color:#5E6573;">
  Questions? Call <a href="tel:1300709100" style="color:#0F1B2D;">1300 709 100</a> or email <a href="mailto:info@lorentis.com.au" style="color:#0F1B2D;">info@lorentis.com.au</a>.

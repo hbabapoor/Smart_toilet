@@ -1,0 +1,27 @@
+LORENTIS
+{{#sample}}
+SAMPLE · This is a sample quote to show how a quote will look. It is not a real quote.
+{{/sample}}
+YOUR QUOTE {{quote_id}}
+{{first_name}}, your installed price is ready.
+
+Thank you for your photos. Here is your install method and your total installed price for the LORENTIS {{model}}. All prices include GST.
+
+YOUR INSTALL METHOD
+{{method}}{{#power_line}} {{power_line}}{{/power_line}}
+
+QUOTE {{quote_id}}{{#issued}} · {{issued}}{{/issued}}
+- LORENTIS {{model}}: {{model_price}}
+{{#note}}  {{note}}
+{{/note}}- Installation by licensed plumber, confirmed from your photos: {{install_price}}
+{{#power_price}}- Power point, confirmed from your photos: {{power_price}}
+{{/power_price}}Total installed price, GST inclusive: {{total}}
+
+YOU DECIDE
+There is no obligation. When you are ready, buy online from your quote: you pay for the toilet and the install together, then pick your install day once your toilet arrives.
+View your quote and buy: {{quote_url}}
+
+Questions about your quote? Call 1300 709 100 or email info@lorentis.com.au.
+
+LORENTIS · Sydney metro
+Prices in AUD, GST inclusive.

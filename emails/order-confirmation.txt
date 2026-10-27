@@ -3,11 +3,10 @@ LORENTIS
 ORDER CONFIRMED
 Thank you, {{first_name}}. Your order is in.
 
-Your toilet is paid for. Install isn't charged now. We'll confirm the price after your free assessment.
+{{^install_paid}}Your toilet is paid for. Install isn't charged now. We'll confirm the price after your free assessment.{{/install_paid}}{{#install_paid}}Your toilet and your install are paid for, at the price confirmed in your quote {{quote_id}}. There is nothing more to pay for the work in your quote.{{/install_paid}}
 
 ORDER {{order_number}}
-{{#items}}
-- LORENTIS {{model}}{{#qty_label}} x {{qty_label}}{{/qty_label}}: {{price}}
+{{#items}}- {{name}}{{#qty_label}} x {{qty_label}}{{/qty_label}}: {{price}}
 {{#note}}  {{note}}
 {{/note}}{{/items}}
 Paid today, GST inclusive: {{order_total}}
@@ -17,7 +16,7 @@ REQUESTED, PAID AFTER YOUR FREE ASSESSMENT
 {{/install_requested}}{{#power_requested}}- Power point, +$1,100
 {{/power_requested}}Nothing is charged for these today.
 {{/has_requests}}
-NEXT STEP: SEND US PHOTOS OF YOUR BATHROOM
+{{^install_paid}}NEXT STEP: SEND US PHOTOS OF YOUR BATHROOM
 Five photos are all we need. We use them to confirm your install and price. It takes a few minutes on your phone.
 
 1. Send your bathroom photos
@@ -31,7 +30,11 @@ Five photos are all we need. We use them to confirm your install and price. It t
    Choose a weekday morning or afternoon and pay for your install online.
    Book your installation: {{book_url}}
 
-Questions? Call 1300 709 100 or email info@lorentis.com.au.
+{{/install_paid}}{{#install_paid}}NEXT STEP: YOUR TOILET ARRIVES, THEN PICK YOUR INSTALL DAY
+We already have your photos and your install is confirmed, so there is nothing to send. Once your toilet has been delivered, choose a weekday morning or afternoon for your licensed plumber.
+Choose your install day: {{book_url}}
+
+{{/install_paid}}Questions? Call 1300 709 100 or email info@lorentis.com.au.
 {{#install_requested}}
 *Licensed plumber install from $990 in Sydney metro (where the water outlet is beside the toilet).
 {{/install_requested}}

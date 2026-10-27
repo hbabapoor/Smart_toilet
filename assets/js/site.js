@@ -174,8 +174,9 @@
   const PHONE = '1300 709 100';
   const setup = (form) => {
     const sel = $('select[name=model]', form);
-    const want = (params.get('model') || '').toUpperCase();
-    if (sel && MODELS.includes(want)) sel.value = want;
+    const wants = (params.get('models') || params.get('model') || '').toUpperCase().split(',').map((x) => x.trim()).filter((x) => MODELS.includes(x));
+    if (sel && wants.length) sel.value = wants[0];
+    $$('input[name=models]', form).forEach((b) => { if (wants.includes(b.value)) b.checked = true; }); // /register/?model=K1 or ?model=K1,K4
     const fill = (k, v) => { const el = form.elements[k]; if (el && v) el.value = v; };
     fill('page', location.pathname); fill('referrer', (tags._ref || document.referrer || '').slice(0, 500));
     fill('order', orderParam()); // /register/?order=LOR-ABC123 from the order confirmation
@@ -255,7 +256,7 @@
     const status = $('.status', form), E = errs(form), input = form.elements.photos, list = $('.thumbs-up', form);
     const items = [];
     input.removeAttribute('required'); // JS manages the photo list
-    const done = () => thanks(form, `<b>Thank you, we have your photos.</b>Our team will look at your photos and contact you about the install cost and method. If it is urgent, call ${PHONE}.`);
+    const done = () => thanks(form, `<b>Thank you, we have your photos.</b>We will reply within 1 business day with your install method and your total installed price. If it is urgent, call ${PHONE}.`);
     if (params.get('sent') === '1') done();
     const total = () => items.reduce((a, x) => a + x.blob.size, 0);
     const render = () => {
@@ -320,7 +321,7 @@
   const CK = 'lorentis_cart', views = $$('[data-cart-view]'), adders = $$('[data-add]'), counters = $$('.cc');
   if (views.length || adders.length || counters.length) {
     const API = meta('lorentis-api');
-    const load = () => { try { const c = JSON.parse(localStorage.getItem(CK) || '{}'); return Array.isArray(c.items) ? c : { items: [] }; } catch { return { items: [] }; } };
+    const load = () => { try { const c = JSON.parse(localStorage.getItem(CK) || '{}'); if (c.quote && !/^Q-[A-Z0-9]{4,12}$/.test(String(c.quote.id))) delete c.quote; return Array.isArray(c.items) ? c : { items: [] }; } catch { return { items: [] }; } };
     let cart = load(), CAT = null;
     const save = () => { try { localStorage.setItem(CK, JSON.stringify(cart)); } catch { /* storage off */ } paint(); };
     const money = (n) => '$' + Number(n).toLocaleString('en-AU', { maximumFractionDigits: 0 });
@@ -329,40 +330,53 @@
     const find = (id) => cart.items.find((x) => x.id === id);
     const add = (id) => {
       const it = find(id);
+      if (it && cart.quote && it.id === cart.quote.model) { save(); return; } // the quoted toilet stays at 1
       if (it) it.qty = Math.min(5, it.qty + 1);
-      else cart.items.push(CAT && CAT.models.some((m) => m.id === id) ? { id, qty: 1, install: true } : { id, qty: 1 });
+      else cart.items.push(CAT && CAT.models.some((m) => m.id === id) ? { id, qty: 1, install: !cart.noInstall } : { id, qty: 1 });
       save();
     };
     const img = (m) => `<picture><source type="image/webp" srcset="${BP}/assets/img/${m.image}.webp"><img src="${BP}/assets/img/${m.image}.webp" alt="" width="80" height="120" loading="lazy"></picture>`;
+    // A quote cart (from /quote/?id=…) carries {quote:{id, model, install, power}}: its install and power point show as charged
+    // lines. The server re-checks the quote id and takes every amount from its own lookup (lib/quotes.js), never from here.
+    const qModel = () => cart.quote && cart.items.find((x) => x.id === cart.quote.model);
     function linesHtml() {
       const inst = CAT.addons.find((a) => a.id === 'install'), pw = CAT.addons.find((a) => a.id === 'power');
+      const Q = qModel() ? cart.quote : null, noInst = !Q && !!cart.noInstall;
       let known = 0, tbc = 0, html = '', instOpts = '';
       const nModels = cart.items.filter((x) => CAT.models.some((m) => m.id === x.id)).length;
       const card = (attr, on, label) => `<label class="opt addon"><input type="checkbox" ${attr}${on ? ' checked' : ''}> <span>${esc(label)}</span></label>`;
+      const qty = (i, locked) => locked ? `<div class="qty"><span class="q1">Qty 1, from your quote</span><button type="button" class="rm" data-rm="${i}">Remove</button></div>`
+        : `<div class="qty"><button type="button" data-dec="${i}" aria-label="One fewer">−</button><span aria-live="polite">${cart.items[i].qty}</span><button type="button" data-inc="${i}" aria-label="One more">+</button><button type="button" class="rm" data-rm="${i}">Remove</button></div>`;
+      const qline = (name, sub, amt) => `<li class="line qline"><span class="th ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><div class="ld"><h3>${esc(name)}</h3><p class="lp">${money(amt)} inc. GST</p><p class="ln">${esc(sub)}</p></div></li>`;
       cart.items.forEach((it, i) => {
         const m = CAT.models.find((x) => x.id === it.id), a = CAT.addons.find((x) => x.id === it.id);
         if (!m && !a) return;
         const unit = m ? m.price : a.price;
         if (a && a.id === 'power') return; // a requested add-on (tick box below), not charged now
-        if (unit == null) tbc++; else known += unit * it.qty; // toilets only
-        let opt = '';
-        if (m && inst) {
-          instOpts += card(`data-inst="${i}"`, it.install, (inst.label || inst.name) + (nModels > 1 ? ` · ${m.name}` : ''));
-        }
+        if (unit == null) tbc++; else known += unit * it.qty;
+        const quoted = Q && it === qModel();
+        if (m && inst && !quoted && !noInst) instOpts += card(`data-inst="${i}"`, it.install, (inst.label || inst.name) + (nModels > 1 ? ` · ${m.name}` : ''));
         html += `<li class="line">${m ? `<span class="th">${img(m)}</span>` : `<span class="th ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9.5 9.5v3M14.5 9.5v3M12 15v1.5"/></svg></span>`}
           <div class="ld"><h3>${m ? 'LORENTIS ' + esc(m.name) : esc(a.name)}</h3><p class="lp">${unit == null ? '<span class="tbc-tag">Price TBC</span>' : (a && a.from ? 'from ' : '') + money(unit) + (a && a.from ? '*' : '') + (m ? ' inc. GST' : '')}</p>
-          ${a && a.note ? `<p class="ln">${esc(a.note)}</p>` : ''}${opt}
-          <div class="qty"><button type="button" data-dec="${i}" aria-label="One fewer">−</button><span aria-live="polite">${it.qty}</span><button type="button" data-inc="${i}" aria-label="One more">+</button><button type="button" class="rm" data-rm="${i}">Remove</button></div></div></li>`;
+          ${a && a.note ? `<p class="ln">${esc(a.note)}</p>` : ''}
+          ${qty(i, quoted)}</div></li>`;
+        if (quoted) {
+          html += qline('Installation by licensed plumber', `Confirmed in your quote ${Q.id}`, Q.install); known += Q.install;
+          if (Q.power) { html += qline('Power point', `Confirmed in your quote ${Q.id}`, Q.power); known += Q.power; }
+        }
       });
       const hasPower = !!find('power');
-      const pwOpt = pw ? card('data-pw', hasPower, pw.label || pw.name) : '';
-      const notes = [inst && instOpts ? inst.note : '', pw ? pw.note : ''].filter(Boolean).map((x) => `<p>${esc(x)}</p>`).join('');
-      const extra = instOpts || pwOpt ? `<div class="addons" role="group" aria-label="Add-ons, paid after your free assessment">${instOpts}${pwOpt}</div>${notes ? `<div class="addon-notes">${notes}</div>` : ''}` : '';
-      // the add-ons are requests: paid after the free assessment, never part of this total
+      const pwOpt = pw && !noInst && !(Q && Q.power) ? card('data-pw', hasPower, pw.label || pw.name) : '';
+      const notes = [inst && instOpts ? inst.note : '', pwOpt ? pw.note : ''].filter(Boolean).map((x) => `<p>${esc(x)}</p>`).join('');
+      const noInstOpt = Q ? '' : `<label class="opt noinst"><input type="checkbox" data-noinst${noInst ? ' checked' : ''}> <span>I don't need installation</span></label>`;
+      const extra = (instOpts || pwOpt ? `<div class="addons" role="group" aria-label="Add-ons, paid after your free assessment">${instOpts}${pwOpt}</div>${notes ? `<div class="addon-notes">${notes}</div>` : ''}` : '') + noInstOpt;
+      // without a quote the add-ons are requests: paid after the free assessment, never part of this total
       const later = instOpts || pwOpt ? `<p class="ln req">${esc(CAT.charge_note || "Install isn't charged now. We'll confirm the price after your free assessment.")}</p>` : '';
-      const total = tbc ? `<div class="tot"><span>Total</span><b>To be confirmed</b></div><p class="ln">${known ? `Priced items: ${money(known)}. ` : ''}Model prices are to be confirmed.</p>${later}` : `<div class="tot"><span>Total</span><b>${money(known)}</b></div>${later}`;
-      return { html, extra, total, inst };
+      const qnote = Q ? `<p class="ln qnote">Your quote ${esc(Q.id)}: toilet and confirmed install, paid together at checkout. All prices include GST. <button type="button" class="ulink" data-unquote>Remove quote</button></p>` : '';
+      const total = tbc ? `<div class="tot"><span>Total</span><b>To be confirmed</b></div><p class="ln">${known ? `Priced items: ${money(known)}. ` : ''}Model prices are to be confirmed.</p>${later}` : `<div class="tot"><span>Total</span><b>${money(known)}</b></div>${qnote}${later}`;
+      return { html, extra, total, inst, Q, noInst };
     }
+    const regLink = () => withTags(BP + '/register/?model=' + cart.items.map((x) => (CAT.models.find((m) => m.id === x.id) || {}).name).filter(Boolean).join(','));
     function paint() {
       const n = count();
       counters.forEach((c) => { c.textContent = n; c.hidden = !n; });
@@ -371,25 +385,33 @@
       views.forEach((v) => {
         if (!cart.items.length) { v.innerHTML = `<div class="empty"><p>Your cart is empty.</p><p><a class="ulink" href="${BP}/#collection">See the collection</a></p></div>`; return; }
         const L = linesHtml();
+        const hasModel = cart.items.some((x) => CAT.models.some((m) => m.id === x.id));
+        // no quote and installation wanted: a gentle nudge to the free assessment, checkout still one tap away
+        const co = !L.Q && !L.noInst && hasModel
+          ? `<div class="as-prompt" role="note"><p><b>Haven't had your free assessment?</b> Get your exact installed price before you pay.</p>
+              <div class="co"><a class="btn" href="${regLink()}">Get free assessment</a><button type="button" class="btn line" data-checkout>Continue to checkout</button></div></div>
+              ${v.dataset.cartView === 'drawer' ? `<p class="dr-view"><a class="ulink" href="${BP}/cart/">View cart</a></p>` : ''}`
+          : `<div class="co"><button type="button" class="btn" data-checkout>${L.Q ? 'Checkout, toilet and install' : 'Checkout'}</button>${v.dataset.cartView === 'drawer' ? `<a class="ulink" href="${BP}/cart/">View cart</a>` : ''}</div>`;
         v.innerHTML = `<ul class="lines">${L.html}</ul>${L.extra}${L.total}
-          <p class="fn">${esc(L.inst ? L.inst.behind : '')}</p>
-          <div class="co"><button type="button" class="btn" data-checkout>Checkout</button>${v.dataset.cartView === 'drawer' ? `<a class="ulink" href="${BP}/cart/">View cart</a>` : ''}</div>
+          <p class="fn">${esc(L.inst && !L.noInst ? L.inst.behind : '')}</p>
+          ${co}
           <div class="status co-status" role="status" aria-live="polite"></div>`;
       });
     }
     // event delegation for cart views
     document.addEventListener('click', async (e) => {
-      const t = e.target.closest('[data-inc],[data-dec],[data-rm],[data-add-pw],[data-checkout]'); if (!t) return;
-      if (t.dataset.inc) { const it = cart.items[+t.dataset.inc]; it.qty = Math.min(5, it.qty + 1); save(); }
+      const t = e.target.closest('[data-inc],[data-dec],[data-rm],[data-add-pw],[data-checkout],[data-unquote]'); if (!t) return;
+      if (t.dataset.inc) { const it = cart.items[+t.dataset.inc]; if (cart.quote && it.id === cart.quote.model) return; it.qty = Math.min(5, it.qty + 1); save(); }
       else if (t.dataset.dec) { const it = cart.items[+t.dataset.dec]; it.qty = Math.max(1, it.qty - 1); save(); }
-      else if (t.dataset.rm !== undefined && t.hasAttribute('data-rm')) { cart.items.splice(+t.dataset.rm, 1); save(); }
+      else if (t.dataset.rm !== undefined && t.hasAttribute('data-rm')) { const gone = cart.items.splice(+t.dataset.rm, 1)[0]; if (cart.quote && gone && gone.id === cart.quote.model) delete cart.quote; save(); }
+      else if (t.hasAttribute('data-unquote')) { delete cart.quote; save(); }
       else if (t.hasAttribute('data-add-pw')) add('power');
       else if (t.hasAttribute('data-checkout')) {
         const st = t.closest('[data-cart-view]').querySelector('.co-status');
         t.disabled = true; st.className = 'status co-status'; st.textContent = 'Checking…';
         let msg = 'Checkout not yet enabled.';
         try {
-          const r = await fetch((API || BP) + '/api/checkout', { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ items: cart.items, utm: TAGS.reduce((o, k) => (tags[k] ? { ...o, [k]: tags[k] } : o), {}) }) });
+          const r = await fetch((API || BP) + '/api/checkout', { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ items: cart.items, ...(qModel() ? { quote: { id: cart.quote.id } } : {}), utm: TAGS.reduce((o, k) => (tags[k] ? { ...o, [k]: tags[k] } : o), {}) }) });
           const j = await r.json().catch(() => ({}));
           if (r.ok && j.ok && j.url) { location.href = j.url; return; }
           if (j.error) msg = j.error;
@@ -400,6 +422,12 @@
     });
     document.addEventListener('change', (e) => {
       const t = e.target.closest('[data-inst]'); if (t) { cart.items[+t.dataset.inst].install = t.checked; save(); return; }
+      const ni = e.target.closest('[data-noinst]');
+      if (ni) { // "I don't need installation": hide and drop the install and power point requests; unticking brings install back
+        cart.noInstall = ni.checked;
+        cart.items = cart.items.filter((x) => !(ni.checked && x.id === 'power')).map((x) => (CAT.models.some((m) => m.id === x.id) ? { ...x, install: !ni.checked } : x));
+        const view = ni.closest('[data-cart-view]'); save(); const again = view && $('[data-noinst]', view); if (again) again.focus(); return;
+      }
       const p = e.target.closest('[data-pw]'); if (p) { if (p.checked) { if (!find('power')) add('power'); } else { cart.items = cart.items.filter((x) => x.id !== 'power'); save(); } }
     });
     // drawer
@@ -414,6 +442,31 @@
     }
     adders.forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); if (!CAT) return; add(b.dataset.add); openDrawer(); }));
     addEventListener('storage', (e) => { if (e.key === CK) { cart = load(); paint(); } });
+    // ---- /quote/?id=Q-…: PREVIEW sample quote from /data/quotes-sample.json; "Buy now" fills the cart with the model and the quote ----
+    function renderQuote(c) {
+      const qv = $('[data-q-view]'); if (!qv) return;
+      const id = (params.get('id') || '').trim().toUpperCase();
+      const fail = () => { qv.innerHTML = `<h2>We couldn't find that quote.</h2><p>Please check the link in your email, or call <a href="tel:1300709100">${PHONE}</a>.</p><p><a class="btn" href="${withTags(BP + '/register/')}">Get my free assessment</a></p>`; };
+      if (!/^Q-[A-Z0-9]{4,12}$/.test(id)) { fail(); return; }
+      fetch(BP + '/data/quotes-sample.json', { cache: 'no-cache' }).then((r) => r.json()).then((d) => {
+        const q = (d.quotes || []).find((x) => x.id === id), m = q && c.models.find((x) => x.id === q.model);
+        if (!q || !m || m.price == null) { fail(); return; }
+        $$('[data-q-id]').forEach((el) => { el.textContent = '· ' + q.id; });
+        const row = (t, sub, amt) => `<li><span><b>${esc(t)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span><span class="qa">${money(amt)}</span></li>`;
+        const total = m.price + q.install + (q.power || 0);
+        qv.innerHTML = `${q.sample ? '<p class="q-preview" role="note"><b>Sample</b> This is a sample quote to show how a quote will look. It is not a real quote.</p>' : ''}
+          <div class="q-head">${img(m)}<div><p class="q-meta">Quote ${esc(q.id)}${q.issued ? ' · ' + esc(q.issued) : ''}</p><h2>LORENTIS ${esc(m.name)}</h2><p>${q.first_name ? 'For ' + esc(q.first_name) + (q.suburb ? ', ' + esc(q.suburb) : '') : ''}</p></div></div>
+          <h3 class="q-h">Your install method</h3><p class="q-method">${esc(q.method || '')}${q.power ? ' ' + esc(q.power_line || '') : ''}</p>
+          <ul class="q-lines">${row('LORENTIS ' + m.name, 'Smart toilet', m.price)}${row('Installation by licensed plumber', 'Confirmed from your photos', q.install)}${q.power ? row('Power point', 'Confirmed from your photos', q.power) : ''}</ul>
+          <div class="tot"><span>Total installed price</span><b>${money(total)}</b></div><p class="ln">All prices include GST.</p>
+          <div class="ctas"><button type="button" class="btn" data-q-buy>Buy now</button><a class="btn line" href="tel:1300709100">Call ${PHONE}</a></div>
+          <p class="buy-note">No obligation. Pay for the toilet and the install together at checkout, then pick your install day once your toilet arrives.</p>`;
+        $('[data-q-buy]', qv).addEventListener('click', () => {
+          cart = { items: [{ id: m.id, qty: 1, install: true }], quote: { id: q.id, model: m.id, install: q.install, power: q.power || 0 } };
+          save(); location.href = withTags(BP + '/cart/');
+        });
+      }).catch(fail);
+    }
     paint();
     fetch(BP + '/data/products.json', { cache: 'no-cache' }).then((r) => r.json()).then((c) => {
       CAT = c;
@@ -422,13 +475,29 @@
       $$('[data-amt]').forEach((el) => { const m = c.models.find((x) => x.id === el.dataset.amt); if (m && m.price != null) el.textContent = money(m.price); });
       const want = params.get('add'); // no-JS fallback links: /cart/?add=k1
       if (want && (c.models.some((m) => m.id === want) || c.addons.some((a) => a.id === want && a.standalone))) { add(want); history.replaceState(null, '', location.pathname); } else paint();
-      if (params.get('paid') === '1') { cart.items = []; save(); }
+      if (params.get('paid') === '1') { cart = { items: [] }; save(); }
+      renderQuote(c);
     }).catch(() => { views.forEach((v) => { v.innerHTML = `<p>The cart could not load. Please call <a href="tel:1300709100">${PHONE}</a>.</p>`; }); });
+  }
+
+  // ---- model pages: sticky buy bar on phones once the hero buttons scroll away (hidden again near the closing section) ----
+  const mbar = $('[data-mbar]'), heroCtas = $('[data-hero-ctas]');
+  if (mbar && heroCtas && 'IntersectionObserver' in window) {
+    let past = false, near = false;
+    const set = () => { const on = past && !near; mbar.classList.toggle('show', on); mbar.inert = !on; document.body.classList.toggle('has-mbar', on); };
+    new IntersectionObserver(([en]) => { past = !en.isIntersecting && en.boundingClientRect.top < 0; set(); }).observe(heroCtas);
+    const end = $('#enquire') || $('footer');
+    if (end) new IntersectionObserver(([en]) => { near = en.isIntersecting; set(); }).observe(end);
+    set();
   }
 
   // ---- order confirmation (/order-confirmed/?order=...): show the number and carry it to /register/ and /book-installation/ ----
   if ($('[data-order-confirmed]')) {
-    const o = orderParam();
+    const o = orderParam(), qn = (params.get('quote') || '').toUpperCase();
+    if (/^Q-[A-Z0-9]{4,12}$/.test(qn)) { // quote buyers: toilet and install already paid, nothing to send
+      $$('[data-oc]').forEach((el) => { el.hidden = el.dataset.oc !== 'quote'; });
+      $$('[data-quote-no]').forEach((el) => { el.textContent = qn; });
+    }
     if (o) {
       $$('[data-order-no]').forEach((el) => { el.textContent = o; const w = el.closest('[hidden]'); if (w) w.hidden = false; });
       $$('a[data-order-link]').forEach((a) => { const u = new URL(a.getAttribute('href'), location.href); u.searchParams.set('order', o); a.setAttribute('href', withTags(u.pathname + u.search + u.hash)); });
