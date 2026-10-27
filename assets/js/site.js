@@ -26,10 +26,10 @@
   // Off (static grid) for reduced motion, no JS, or screens too short for the row.
   const acc = $('[data-acc]');
   if (acc) {
-    const row = $('.acc-row', acc), cards = $$('.ac', acc), bar = $('.acc-bar span', acc), N = cards.length;
-    const mq = matchMedia('(prefers-reduced-motion: reduce)');
-    let on = false, step = 1, tick = 0, lastW = 0, scrollIdx = -1;
-    const set = (i) => cards.forEach((c, k) => c.classList.toggle('on', k === i));
+    const row = $('.acc-row', acc), cards = $$('.ac', acc), bar = $('.acc-bar span', acc), cnt = $('[data-acc-n]', acc), N = cards.length;
+    const mq = matchMedia('(prefers-reduced-motion: reduce)'), phone = matchMedia('(max-width:700px)');
+    let on = false, step = 1, tick = 0, lastW = 0, scrollIdx = -1, soft = false;
+    const set = (i) => { cards.forEach((c, k) => c.classList.toggle('on', k === i)); if (cnt) cnt.textContent = String(i + 1); };
     const top = () => acc.getBoundingClientRect().top + scrollY;
     const idxAt = (y) => Math.min(N - 1, Math.max(0, Math.floor(y / step)));
     const paint = () => {
@@ -38,14 +38,32 @@
       if (bar) bar.style.transform = `scaleX(${Math.min(1, Math.max(0, y / (step * N))).toFixed(4)})`;
       if (i !== scrollIdx) { scrollIdx = i; set(i); }
     };
-    const off = () => { on = false; acc.classList.remove('on'); acc.style.height = ''; };
+    const off = () => { on = false; acc.classList.remove('on'); acc.style.height = ''; soft = false; };
+    // Phones: a gentle, one-way settle (our own proximity snap). When the scroll comes to rest with no finger down and the
+    // open card's centre is just ahead in the direction you were scrolling (within 30% of its distance), the page glides
+    // there so the card sits centred. It never pulls you back, never moves to another card, and a fast flick is left alone
+    // until it has finished, so the page can always move on.
+    let down = false, idle = 0, lastY = scrollY, dir = 0;
+    const settle = () => {
+      idle = 0; if (!on || !soft || down) return;
+      const y = scrollY - top(); if (y < 0 || y >= step * N) return;
+      const d = (idxAt(y) + 0.5) * step - y; // > 0: centre is further down
+      if (Math.abs(d) < 3 || Math.abs(d) > step * 0.3 || (Math.abs(d) > 24 && Math.sign(d) !== dir)) return;
+      scrollTo({ top: Math.round(scrollY + d), behavior: mq.matches ? 'auto' : 'smooth' });
+    };
+    const rest = () => { clearTimeout(idle); idle = setTimeout(settle, 160); };
+    addEventListener('touchstart', () => { down = true; clearTimeout(idle); }, { passive: true });
+    addEventListener('touchend', () => { down = false; rest(); }, { passive: true });
+    addEventListener('touchcancel', () => { down = false; rest(); }, { passive: true });
+    addEventListener('scroll', () => { const y = scrollY; if (y !== lastY) dir = y > lastY ? 1 : -1; lastY = y; if (soft && !down) rest(); }, { passive: true });
     const measure = () => {
       lastW = innerWidth;
       if (mq.matches || innerHeight < 500) return off();
       acc.classList.add('on');
-      step = Math.round(innerHeight * 0.45);
+      // Phones: each model gets its own ~90vh of scroll, so the open card holds while you read it. Desktop keeps 45vh.
+      step = Math.round(innerHeight * (phone.matches ? 0.9 : 0.45));
       acc.style.height = (innerHeight + step * N) + 'px'; // one step of scroll per card, then the page carries on
-      on = true; scrollIdx = -1; paint();
+      on = true; scrollIdx = -1; soft = phone.matches; paint();
     };
     const req = () => { if (!tick) { tick = 1; requestAnimationFrame(paint); } };
     addEventListener('scroll', req, { passive: true });
