@@ -39,14 +39,21 @@
     };
   };
   /*HERO-MAP-END*/
+  // Frame sequence (the generated K1 clip, trimmed): which of the n frames to show at scroll progress p. Linear and reversible; the last frame holds for the final 10%.
+  /*HV-MAP-START*/
+  const hvMap = (p, n) => {
+    const q = Math.min(1, Math.max(0, p / 0.9)), f = q * (n - 1);
+    return { f, i: Math.round(f), cap: p < 0.12 ? 'I / V' : 'Lid open' };
+  };
+  /*HV-MAP-END*/
   const hero = $('[data-hero]');
   const hsOK = hero && !RM && !(navigator.connection && navigator.connection.saveData) && CSS.supports && CSS.supports('overflow', 'clip') && $('[data-hf]', hero);
   if (hsOK) {
-    const prodEl = $('.prod', hero), wrapEl = $('.wrap', hero), stickEl = $('.pin', hero), capEl = $('[data-hero-cap]', hero);
+    const hvEl = $('[data-hv]', hero), floorEl = $('.floor', hero), prodEl = $('.prod', hero), wrapEl = $('.wrap', hero), stickEl = $('.pin', hero), capEl = $('[data-hero-cap]', hero);
     const frames = $$('[data-hf]', hero), mqM = matchMedia('(max-width:900px)'), mqRM = matchMedia('(prefers-reduced-motion: reduce)');
     let mode = '', dist = 1, start = 0, target = 0, cur = 0, raf = 0, lastCap = '', loaded = false, measured = false;
     const clamp01 = (x) => Math.min(1, Math.max(0, x));
-    const off = () => { mode = ''; hero.classList.remove('hs', 'hs-d', 'hs-m'); hero.style.removeProperty('--hd'); prodEl.style.transform = ''; frames.forEach((f) => { f.style.opacity = ''; f.style.transform = ''; }); const f0 = $('.hf0', hero); if (f0) f0.style.opacity = ''; if (capEl) capEl.textContent = 'I / V'; lastCap = ''; };
+    const off = () => { mode = ''; hero.classList.remove('hs', 'hs-d', 'hs-m'); hero.style.removeProperty('--hd'); prodEl.style.transform = ''; if (floorEl) floorEl.style.transform = ''; hero.classList.remove('hv-on'); frames.forEach((f) => { f.style.opacity = ''; f.style.transform = ''; }); const f0 = $('.hf0', hero); if (f0) f0.style.opacity = ''; if (capEl) capEl.textContent = 'I / V'; lastCap = ''; };
     const measure = () => {
       off(); if (mqRM.matches) return;
       const vh = innerHeight, mobile = mqM.matches, D = Math.round(vh * 1.25);
@@ -67,15 +74,60 @@
         start = 0;
         dist = Math.max(1, hero.offsetHeight - wrapEl.offsetHeight); mode = 'd';
       }
-      measured = true; cur = target = progress(); paint(cur); loadFrames();
+      measured = true; hvSize(); cur = target = progress(); hv.i = hvMap(cur, hv.n || 2).i; paint(cur); loadFrames();
     };
     const progress = () => { if (!mode) return 0; const top = (mode === 'm' ? wrapEl : hero).getBoundingClientRect().top; return clamp01((-top - start) / dist); };
     const paint = (p) => {
+      if (hv.on) {
+        const m = hvMap(p, hv.n); hv.i = m.i; hvDraw(); prodEl.style.transform = '';
+        if (floorEl) floorEl.style.transform = 'translate3d(0,' + (hv.floor[m.i] / 100 * prodEl.offsetWidth).toFixed(1) + 'px,0)';
+        if (m.cap !== lastCap) { lastCap = m.cap; if (capEl) capEl.textContent = m.cap; }
+        return;
+      }
       const m = heroMap(p);
       prodEl.style.transform = 'translate3d(0,' + m.ty.toFixed(3) + '%,0) scale(' + m.s.toFixed(4) + ')';
       const f0 = $('.hf0', hero); f0.style.opacity = m.o[0].toFixed(3);
       for (let i = 0; i < 3; i++) { const f = frames[i]; f.style.opacity = m.o[i + 1].toFixed(3); f.style.transform = m.rot[i + 1] ? 'perspective(1100px) rotateY(' + m.rot[i + 1].toFixed(2) + 'deg)' : ''; }
       if (m.cap !== lastCap) { lastCap = m.cap; if (capEl) capEl.textContent = m.cap; }
+    };
+    // ---- frame-sequence canvas: lazy, nearest frame first; photo crossfade above stays the fallback until (and unless) enough frames load ----
+    const hv = { on: false, n: 0, i: 0, ok: 0, bad: 0, fr: [], floor: [], drawn: -1, started: false, dead: false, ext: 'avif', ctx: null };
+    if (hvEl && hvEl.getContext) {
+      try { hv.ctx = hvEl.getContext('2d'); hv.n = +hvEl.dataset.n || 0; hv.floor = JSON.parse(hvEl.dataset.floor || '[]'); } catch (e) { hv.ctx = null; }
+      if (!hv.ctx || hv.n < 2 || hv.floor.length !== hv.n) hv.ctx = null;
+    }
+    const hvNear = (i) => { for (let d = 0; d < hv.n; d++) { if (hv.fr[i - d]) return hv.fr[i - d]; if (hv.fr[i + d]) return hv.fr[i + d]; } return null; };
+    const hvSize = () => {
+      if (!hv.ctx) return;
+      const dpr = Math.min(2, window.devicePixelRatio || 1), w = Math.max(1, Math.round(hvEl.clientWidth * dpr)), nat = +(mqM.matches ? hvEl.dataset.wp : hvEl.dataset.wd) || w, ww = Math.min(w, nat);
+      if (hvEl.width !== ww) { hvEl.setAttribute('width', ww); hvEl.setAttribute('height', Math.round(ww * (+hvEl.dataset.ratio || 1))); hv.drawn = -1; } // canvas backing store size, not layout
+    };
+    function hvDraw() {
+      if (!hv.ctx || hv.drawn === hv.i) return; const im = hvNear(hv.i); if (!im) return;
+      hv.ctx.clearRect(0, 0, hvEl.width, hvEl.height); hv.ctx.drawImage(im, 0, 0, hvEl.width, hvEl.height); hv.drawn = hv.i;
+    }
+    const hvAbort = () => { hv.dead = true; hv.on = false; hv.fr = []; hero.classList.remove('hv-on'); lastCap = ''; };
+    const hvStart = () => {
+      if (!hv.ctx || hv.started || hv.dead) return; hv.started = true;
+      const base = (($('meta[name="lorentis-base"]') || {}).content || '') + (hvEl.dataset.base || ''), wide = mqM.matches ? '720' : '960';
+      const order = Array.from({ length: hv.n }, (_, i) => i).sort((a, b) => Math.abs(a - hv.i) - Math.abs(b - hv.i) || a - b);
+      let next = 0, retried = false;
+      const pump = () => {
+        while (!hv.dead && next < order.length && pump.active < 4) {
+          const i = order[next++], im = new Image(); pump.active++; im.decoding = 'async';
+          const fin = (good) => {
+            pump.active--;
+            if (hv.dead) return;
+            if (good) { hv.fr[i] = im; hv.ok++; if (!hv.on && hv.ok >= Math.ceil(hv.n * 0.4)) { hvSize(); hv.on = true; hero.classList.add('hv-on'); lastCap = ''; paint(cur); } else if (hv.on) { hv.drawn = -1; hvDraw(); } }
+            else if (hv.ext === 'avif' && hv.ok === 0 && !retried) { retried = true; hv.ext = 'webp'; next = 0; pump.active = Math.max(0, pump.active); } // no AVIF support: start over with WebP
+            else if (++hv.bad > hv.n * 0.25) { hvAbort(); return; }
+            pump();
+          };
+          im.onload = () => fin(true); im.onerror = () => fin(false);
+          im.src = base + String(i).padStart(2, '0') + '-' + wide + '.' + hv.ext;
+        }
+      };
+      pump.active = 0; pump();
     };
     const tick = () => {
       raf = 0; target = progress();
@@ -87,10 +139,10 @@
     const kick = () => { if (mode && !raf) raf = requestAnimationFrame(tick); };
     function loadFrames() {
       if (loaded) return; loaded = true;
-      const go = () => frames.forEach((f) => {
+      const go = () => { hvStart(); frames.forEach((f) => {
         $$('source', f).forEach((so) => { so.srcset = so.getAttribute('data-srcset'); });
         const im = $('img', f); im.src = im.getAttribute('data-src'); if (im.decode) im.decode().catch(() => {});
-      });
+      }); };
       let done = false; const once = () => { if (done) return; done = true; go(); };
       addEventListener('scroll', once, { once: true, passive: true });
       const idle = () => (window.requestIdleCallback ? requestIdleCallback(once, { timeout: 2500 }) : setTimeout(once, 1200));
@@ -101,7 +153,7 @@
     addEventListener('resize', remeasure); addEventListener('orientationchange', remeasure);
     (mqRM.addEventListener ? mqRM.addEventListener('change', remeasure) : 0);
     measure();
-    hero.heroState = () => ({ on: !!mode, mode, p: +target.toFixed(4), cur: +cur.toFixed(4), dist, start, map: heroMap(cur) });
+    hero.heroState = () => ({ on: !!mode, mode, p: +target.toFixed(4), cur: +cur.toFixed(4), dist, start, map: heroMap(cur), hv: { on: hv.on, n: hv.n, ok: hv.ok, bad: hv.bad, i: hv.i, ext: hv.ext, dead: hv.dead } });
   }
 
   // ---- home collection: expanding-card accordion, step-by-step ----
