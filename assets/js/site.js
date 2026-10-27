@@ -20,140 +20,110 @@
     tio.observe(tg);
   }
 
-  // ---- home hero: scroll-scrubbed "lid opens, then side view" (sticky pin + rAF, progress comes from scroll position only) ----
-  // Never prevents default and never intercepts wheel/touch/keys, so scrolling UP (and down) is always free. Off for reduced motion,
-  // data-saver and short screens; the static front K1 hero is the fallback (and what no-JS shows).
+  // ---- home hero: the K1 video below the headline, scrubbed by scroll (sticky pin + rAF; progress comes from the scroll position only) ----
+  // Never prevents default and never intercepts wheel/touch/keys, so scrolling UP (and down) is always free. Reduced motion and data-saver keep the poster
+  // (frame 0 of the video) and never download the video. Devices that cannot scrub smoothly (iPhone/iPad, or a seek test that is too slow, or a screen too
+  // short to pin) play the original video once, muted, when it scrolls into view.
   /*HERO-MAP-START*/
-  const heroMap = (p) => {
-    const cl = (x) => Math.min(1, Math.max(0, x));
-    const ss = (a, b, x) => { x = cl((x - a) / (b - a)); return x * x * (3 - 2 * x); };
-    const lerp = (a, b, t) => a + (b - a) * t;
-    p = cl(p);
-    const a = ss(0.06, 0.22, p), b = ss(0.22, 0.44, p), c = ss(0.56, 0.86, p), c1 = ss(0, 0.20, p), c2 = ss(0.56, 0.90, p);
-    const s = lerp(lerp(1, 0.80, c1), 0.95, c2);
-    const ty = lerp(lerp(0, 29.3, c1), -6.6, c2); // % of the product box height (units: 286 -> 29.3%, -65 -> -6.6%)
-    return {
-      o: [1 - a, a * (1 - b), b * (1 - c), c], // front, lid part-way, lid open, side
-      s, ty, rot: [0, 0, 16 * c, -16 * (1 - c)],
-      cap: p < 0.14 ? 'I / V' : p < 0.62 ? 'Lid open' : 'Side view'
-    };
+  const heroFrame = (p) => { // scroll progress 0..1 -> frame k of the 145 frames (24 fps) and the time to seek to (middle of that frame)
+    const NF = 145, FPS = 24, q = Math.min(1, Math.max(0, p)), k = Math.round(q * (NF - 1));
+    return { k, t: (k + 0.5) / FPS, NF };
   };
   /*HERO-MAP-END*/
-  // Frame sequence (the generated K1 clip, trimmed): which of the n frames to show at scroll progress p. Linear and reversible; the last frame holds for the final 10%.
-  /*HV-MAP-START*/
-  const hvMap = (p, n) => {
-    const q = Math.min(1, Math.max(0, p / 0.9)), f = q * (n - 1);
-    return { f, i: Math.round(f), cap: p < 0.12 ? 'I / V' : 'Lid open' };
-  };
-  /*HV-MAP-END*/
   const hero = $('[data-hero]');
-  const hsOK = hero && !RM && !(navigator.connection && navigator.connection.saveData) && CSS.supports && CSS.supports('overflow', 'clip') && $('[data-hf]', hero);
-  if (hsOK) {
-    const hvEl = $('[data-hv]', hero), floorEl = $('.floor', hero), prodEl = $('.prod', hero), wrapEl = $('.wrap', hero), stickEl = $('.pin', hero), capEl = $('[data-hero-cap]', hero);
-    const frames = $$('[data-hf]', hero), mqM = matchMedia('(max-width:900px)'), mqRM = matchMedia('(prefers-reduced-motion: reduce)');
-    let mode = '', dist = 1, start = 0, target = 0, cur = 0, raf = 0, lastCap = '', loaded = false, measured = false;
+  const vEl = hero && $('[data-vid]', hero);
+  const saveData = !!(navigator.connection && navigator.connection.saveData);
+  if (vEl && !RM && !saveData) {
+    const wrapEl = $('.wrap', hero), stickEl = $('.pin', hero), mqM = matchMedia('(max-width:900px)'), mqRM = matchMedia('(prefers-reduced-motion: reduce)');
+    const base = ($('meta[name="lorentis-base"]') || {}).content || '';
+    const iOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const PIN = 1.8; // pinned scroll distance, in screens
+    let mode = '', dist = 1, start = 0, target = 0, cur = 0, raf = 0, engine = '', ready = false, seeking = false, issued = -1, k = 0, seekMs = null, started = false, played = false, failed = false;
     const clamp01 = (x) => Math.min(1, Math.max(0, x));
-    const off = () => { mode = ''; hero.classList.remove('hs', 'hs-d', 'hs-m'); hero.style.removeProperty('--hd'); prodEl.style.transform = ''; if (floorEl) floorEl.style.transform = ''; hero.classList.remove('hv-on'); frames.forEach((f) => { f.style.opacity = ''; f.style.transform = ''; }); const f0 = $('.hf0', hero); if (f0) f0.style.opacity = ''; if (capEl) capEl.textContent = 'I / V'; lastCap = ''; };
-    const measure = () => {
-      off(); if (mqRM.matches) return;
-      const vh = innerHeight, mobile = mqM.matches, D = Math.round(vh * 1.25);
+    const off = () => { mode = ''; hero.classList.remove('hs', 'hs-d', 'hs-m'); hero.style.removeProperty('--hd'); };
+    const measure = () => { // pin layout: only when it fits and nobody asked for less motion
+      off(); if (mqRM.matches || iOS || engine === 'play') return;
+      const vh = innerHeight, mobile = mqM.matches, D = Math.round(vh * PIN);
+      if (!(CSS.supports && CSS.supports('overflow', 'clip'))) return;
       if (mobile) {
         if (vh < 560) return;
         hero.classList.add('hs', 'hs-m'); hero.style.setProperty('--hd', '0px');
-        if (stickEl.offsetHeight > vh - 8) { off(); return; } // photo + text + buttons must all fit on screen while pinned
-        const hh = $('.hh', hero), off0 = hh ? hh.offsetHeight : 0; // headline block above the pinned photo
+        if (stickEl.offsetHeight > vh - 8) { off(); return; } // video + buttons must both fit on screen while pinned
+        const hh = $('.hh', hero), off0 = hh ? hh.offsetHeight : 0; // headline + sub-headline block above the pinned video
         const natural = wrapEl.offsetHeight - stickEl.offsetHeight - off0;
         hero.style.setProperty('--hd', Math.max(0, D - natural) + 'px');
-        // progress runs while the photo is pinned: it starts when the headline block has scrolled away and ends when the pin releases
         start = Math.max(0, off0 - 2);
         dist = Math.max(1, wrapEl.offsetHeight - stickEl.offsetHeight - start); mode = 'm';
       } else {
         if (vh < 600) return;
         hero.classList.add('hs', 'hs-d'); hero.style.setProperty('--hd', D + 'px');
-        if (wrapEl.offsetHeight > vh + 1) { off(); return; } // the pinned view must hold headline, text, buttons and photo without cropping
-        start = 0;
-        dist = Math.max(1, hero.offsetHeight - wrapEl.offsetHeight); mode = 'd';
+        if (wrapEl.offsetHeight > vh + 1) { off(); return; } // headline, sub-headline, video and buttons must fit the pinned view
+        start = 0; dist = Math.max(1, hero.offsetHeight - wrapEl.offsetHeight); mode = 'd';
       }
-      measured = true; hvSize(); cur = target = progress(); hv.i = hvMap(cur, hv.n || 2).i; paint(cur); loadFrames();
+      target = cur = progress(); k = heroFrame(cur).k;
     };
     const progress = () => { if (!mode) return 0; const top = (mode === 'm' ? wrapEl : hero).getBoundingClientRect().top; return clamp01((-top - start) / dist); };
-    const paint = (p) => {
-      if (hv.on) {
-        const m = hvMap(p, hv.n); hv.i = m.i; hvDraw(); prodEl.style.transform = '';
-        if (floorEl) floorEl.style.transform = 'translate3d(0,' + (hv.floor[m.i] / 100 * prodEl.offsetWidth).toFixed(1) + 'px,0)';
-        if (m.cap !== lastCap) { lastCap = m.cap; if (capEl) capEl.textContent = m.cap; }
-        return;
-      }
-      const m = heroMap(p);
-      prodEl.style.transform = 'translate3d(0,' + m.ty.toFixed(3) + '%,0) scale(' + m.s.toFixed(4) + ')';
-      const f0 = $('.hf0', hero); f0.style.opacity = m.o[0].toFixed(3);
-      for (let i = 0; i < 3; i++) { const f = frames[i]; f.style.opacity = m.o[i + 1].toFixed(3); f.style.transform = m.rot[i + 1] ? 'perspective(1100px) rotateY(' + m.rot[i + 1].toFixed(2) + 'deg)' : ''; }
-      if (m.cap !== lastCap) { lastCap = m.cap; if (capEl) capEl.textContent = m.cap; }
+    // ---- scrub engine: seek the (all short-GOP) video to the frame for the eased scroll progress, one seek at a time ----
+    const seek = () => {
+      if (engine !== 'scrub' || !ready || seeking) return;
+      const f = heroFrame(cur); if (f.k === issued) return;
+      seeking = true; issued = f.k; vEl.currentTime = f.t;
     };
-    // ---- frame-sequence canvas: lazy, nearest frame first; photo crossfade above stays the fallback until (and unless) enough frames load ----
-    const hv = { on: false, n: 0, i: 0, ok: 0, bad: 0, fr: [], floor: [], drawn: -1, started: false, dead: false, ext: 'avif', ctx: null };
-    if (hvEl && hvEl.getContext) {
-      try { hv.ctx = hvEl.getContext('2d'); hv.n = +hvEl.dataset.n || 0; hv.floor = JSON.parse(hvEl.dataset.floor || '[]'); } catch (e) { hv.ctx = null; }
-      if (!hv.ctx || hv.n < 2 || hv.floor.length !== hv.n) hv.ctx = null;
-    }
-    const hvNear = (i) => { for (let d = 0; d < hv.n; d++) { if (hv.fr[i - d]) return hv.fr[i - d]; if (hv.fr[i + d]) return hv.fr[i + d]; } return null; };
-    const hvSize = () => {
-      if (!hv.ctx) return;
-      const dpr = Math.min(2, window.devicePixelRatio || 1), w = Math.max(1, Math.round(hvEl.clientWidth * dpr)), nat = +(mqM.matches ? hvEl.dataset.wp : hvEl.dataset.wd) || w, ww = Math.min(w, nat);
-      if (hvEl.width !== ww) { hvEl.setAttribute('width', ww); hvEl.setAttribute('height', Math.round(ww * (+hvEl.dataset.ratio || 1))); hv.drawn = -1; } // canvas backing store size, not layout
-    };
-    function hvDraw() {
-      if (!hv.ctx || hv.drawn === hv.i) return; const im = hvNear(hv.i); if (!im) return;
-      hv.ctx.clearRect(0, 0, hvEl.width, hvEl.height); hv.ctx.drawImage(im, 0, 0, hvEl.width, hvEl.height); hv.drawn = hv.i;
-    }
-    const hvAbort = () => { hv.dead = true; hv.on = false; hv.fr = []; hero.classList.remove('hv-on'); lastCap = ''; };
-    const hvStart = () => {
-      if (!hv.ctx || hv.started || hv.dead) return; hv.started = true;
-      const base = (($('meta[name="lorentis-base"]') || {}).content || '') + (hvEl.dataset.base || ''), wide = mqM.matches ? '720' : '960';
-      const order = Array.from({ length: hv.n }, (_, i) => i).sort((a, b) => Math.abs(a - hv.i) - Math.abs(b - hv.i) || a - b);
-      let next = 0, retried = false;
-      const pump = () => {
-        while (!hv.dead && next < order.length && pump.active < 4) {
-          const i = order[next++], im = new Image(); pump.active++; im.decoding = 'async';
-          const fin = (good) => {
-            pump.active--;
-            if (hv.dead) return;
-            if (good) { hv.fr[i] = im; hv.ok++; if (!hv.on && hv.ok >= Math.ceil(hv.n * 0.4)) { hvSize(); hv.on = true; hero.classList.add('hv-on'); lastCap = ''; paint(cur); } else if (hv.on) { hv.drawn = -1; hvDraw(); } }
-            else if (hv.ext === 'avif' && hv.ok === 0 && !retried) { retried = true; hv.ext = 'webp'; next = 0; pump.active = Math.max(0, pump.active); } // no AVIF support: start over with WebP
-            else if (++hv.bad > hv.n * 0.25) { hvAbort(); return; }
-            pump();
-          };
-          im.onload = () => fin(true); im.onerror = () => fin(false);
-          im.src = base + String(i).padStart(2, '0') + '-' + wide + '.' + hv.ext;
-        }
-      };
-      pump.active = 0; pump();
-    };
+    vEl.addEventListener('seeked', () => { seeking = false; k = issued; if (engine === 'scrub') { if (!vEl.classList.contains('on')) vEl.classList.add('on'); if (heroFrame(cur).k !== issued) kick(); } });
     const tick = () => {
-      raf = 0; target = progress();
-      const d = target - cur;
-      if (Math.abs(d) < 0.0006) cur = target; else cur += d * 0.2;
-      paint(cur);
-      if (cur !== target) raf = requestAnimationFrame(tick);
+      raf = 0; target = progress(); const d = target - cur;
+      if (Math.abs(d) < 0.0004) cur = target; else cur += d * 0.22;
+      seek();
+      if (cur !== target || seeking || heroFrame(cur).k !== issued) raf = requestAnimationFrame(tick);
     };
-    const kick = () => { if (mode && !raf) raf = requestAnimationFrame(tick); };
-    function loadFrames() {
-      if (loaded) return; loaded = true;
-      const go = () => { hvStart(); frames.forEach((f) => {
-        $$('source', f).forEach((so) => { so.srcset = so.getAttribute('data-srcset'); });
-        const im = $('img', f); im.src = im.getAttribute('data-src'); if (im.decode) im.decode().catch(() => {});
-      }); };
-      let done = false; const once = () => { if (done) return; done = true; go(); };
+    function kick() { if (engine === 'scrub' && !raf) raf = requestAnimationFrame(tick); }
+    const loadVideo = (url, cb) => { // set the source, call back with true once enough is there
+      let done = false; const fin = (ok) => { if (!done) { done = true; clearTimeout(to); cb(ok); } };
+      const to = setTimeout(() => fin(false), 25000);
+      vEl.preload = 'auto'; vEl.muted = true; vEl.src = base + url;
+      vEl.addEventListener('error', () => fin(false), { once: true });
+      const chk = () => { if (vEl.readyState >= 2 && vEl.duration && vEl.buffered.length && vEl.buffered.end(vEl.buffered.length - 1) >= vEl.duration - 0.06) fin(true); };
+      vEl.addEventListener('progress', chk); vEl.addEventListener('loadeddata', chk); vEl.addEventListener('canplaythrough', chk); chk();
+    };
+    const frameShown = (fn) => { let d = false; const f = () => { if (!d) { d = true; fn(); } }; if (vEl.requestVideoFrameCallback) { vEl.requestVideoFrameCallback(f); setTimeout(f, 600); } else vEl.addEventListener('seeked', f, { once: true }); };
+    const playOnce = () => { // fallback: the original video, muted, once, when it is on screen
+      if (played || failed) return; played = true; engine = 'play';
+      if (mode && scrollY < hero.offsetTop + 40) { off(); } // not pinned any more (if the visitor is already inside the pin it simply finishes)
+      vEl.classList.remove('on'); vEl.removeAttribute('src'); vEl.load();
+      const go = () => loadVideo(vEl.dataset.play, (ok) => {
+        if (!ok) { failed = true; return; }
+        vEl.loop = false; const pr = vEl.play(); const show = () => { vEl.classList.add('on'); };
+        if (pr && pr.then) pr.then(() => frameShown(show), () => {}); else show();
+      });
+      if ('IntersectionObserver' in window) { const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); go(); } }, { threshold: 0.5 }); io.observe($('[data-vwrap]', hero)); } else go();
+    };
+    const startScrub = () => {
+      if (started) return; started = true;
+      if (iOS || !mode) { playOnce(); return; }
+      loadVideo(vEl.dataset.scrub, (ok) => {
+        if (!ok) { playOnce(); return; }
+        // seek test: a handful of jumps across the clip; scrubbing is only used when each one lands within ~90 ms (otherwise play normally)
+        const pts = [24, 96, 48, 130, 12, 72, 112, 36], lat = []; let i = 0;
+        const step = () => {
+          if (i >= pts.length) { lat.sort((a, b) => a - b); seekMs = lat[lat.length >> 1]; if (seekMs <= 90) { engine = 'scrub'; ready = true; issued = -1; seeking = false; cur = target = progress(); kick(); seek(); } else playOnce(); return; }
+          const t0 = performance.now(); let got = false; const fin = () => { if (got) return; got = true; lat.push(performance.now() - t0); i++; step(); };
+          vEl.addEventListener('seeked', fin, { once: true }); vEl.currentTime = heroFrame(pts[i] / 144).t; setTimeout(fin, 1500);
+        };
+        step();
+      });
+    };
+    const lazy = () => { // poster first; the video is only touched after the window load, when the browser is idle (or on the first scroll)
+      let done = false; const once = () => { if (done) return; done = true; startScrub(); };
       addEventListener('scroll', once, { once: true, passive: true });
-      const idle = () => (window.requestIdleCallback ? requestIdleCallback(once, { timeout: 2500 }) : setTimeout(once, 1200));
+      const idle = () => (window.requestIdleCallback ? requestIdleCallback(once, { timeout: 2000 }) : setTimeout(once, 900));
       if (document.readyState === 'complete') idle(); else addEventListener('load', idle, { once: true });
-    }
+    };
     let rs = 0; const remeasure = () => { if (rs) return; rs = requestAnimationFrame(() => { rs = 0; measure(); kick(); }); };
     addEventListener('scroll', kick, { passive: true });
     addEventListener('resize', remeasure); addEventListener('orientationchange', remeasure);
     (mqRM.addEventListener ? mqRM.addEventListener('change', remeasure) : 0);
-    measure();
-    hero.heroState = () => ({ on: !!mode, mode, p: +target.toFixed(4), cur: +cur.toFixed(4), dist, start, map: heroMap(cur), hv: { on: hv.on, n: hv.n, ok: hv.ok, bad: hv.bad, i: hv.i, ext: hv.ext, dead: hv.dead } });
+    measure(); lazy();
+    hero.heroState = () => ({ on: !!mode, mode, engine, ready, p: +target.toFixed(4), cur: +cur.toFixed(4), k, issued, seeking, seekMs: seekMs === null ? null : +seekMs.toFixed(1), dist, start, t: +vEl.currentTime.toFixed(3), shown: vEl.classList.contains('on'), failed, frame: heroFrame(cur) });
   }
 
   // ---- home collection: expanding-card accordion, step-by-step ----
