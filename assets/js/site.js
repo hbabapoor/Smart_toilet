@@ -21,10 +21,12 @@
   }
 
   // ---- home collection: expanding-card accordion, step-by-step ----
-  // The section locks on K1 when it reaches the top of the screen (whatever the scroll speed). Each separate gesture (one swipe,
-  // one wheel or trackpad flick, one key press) moves exactly one card with a ~0.5s transition; input is ignored until that has
-  // finished plus a short cooldown. On K1 an upward gesture, and on K73 a downward gesture, releases the page. Dots, the counter
-  // and Skip jump. Off (a static list of cards) for reduced motion, no JS, or screens too short for the row.
+  // Going DOWN: the section locks on K1 when it reaches the top of the screen (whatever the scroll speed). Each separate gesture (one
+  // swipe, one wheel or trackpad flick, one key press) moves exactly one card with a ~0.5s transition; input is ignored until that
+  // has finished plus a short cooldown. On K73 a downward gesture releases the page.
+  // Going UP is never locked: coming back from below does not stop, and any upward swipe, wheel or ArrowUp/PageUp/Shift+Space while
+  // locked releases at once (native scrolling and momentum). Once the section is above the screen again it re-arms on K1.
+  // Dots, the counter and Skip jump. Off (a static list of cards) for reduced motion, no JS, or screens too short for the row.
   // Locking: phones fix the body (this also stops scroll momentum on iOS); desktops keep the scroll position and swallow wheel and
   // key input. Safety unlocks: anchors, focus leaving, resize, other scrolling, layout shifts, page restore.
   const acc = $('[data-acc]');
@@ -57,7 +59,7 @@
     const unlock = () => {
       if (!locked) return;
       locked = false; clearInterval(watch);
-      if (fixedOn) { unfix(); scrollTo(0, lockY); fixedOn = false; }
+      if (fixedOn) { unfix(); scrollTo({ top: lockY, behavior: 'instant' }); fixedOn = false; } // same task as the caller: no frame in between, no jump
       R.classList.remove('acc-locked'); acc.classList.remove('lk'); prevTop = 0;
     };
     // safety net: if the layout moved under the lock (fonts, images, resize), follow it; never leave the page stuck
@@ -70,11 +72,14 @@
       const y = lockY; unlock(); swallow = true;
       scrollTo({ top: Math.max(0, y + dir * Math.round(innerHeight * 0.6)), behavior: 'smooth' }); // the page carries on
     };
+    // upward: let go at once; the page then scrolls natively (same gesture where the browser allows, else the next one)
+    const up = () => { unlock(); wFired = true; swallow = false; };
     const go = (dir, src) => {
       if (!locked) return false;
       const t = now(); if (t < busyUntil) return false;
+      if (dir < 0) { up(); return true; }
       const j = idx + dir;
-      if (j < 0 || j >= N) { release(dir); return true; }
+      if (j >= N) { release(1); return true; }
       set(j); busyUntil = t + (src === 'touch' ? TOUCH_COOL : STEP_COOL); return true;
     };
     const jump = (i) => {
@@ -84,9 +89,9 @@
     const measure = () => {
       unlock(); lastW = innerWidth; prevTop = null;
       if (mq.matches || innerHeight < 500) { on = false; acc.classList.remove('on'); return; }
-      on = true; acc.classList.add('on'); prevTop = topNow(); set(topNow() < 0 ? N - 1 : 0, true);
+      on = true; acc.classList.add('on'); prevTop = topNow(); set(idx, true);
     };
-    // entering: crossing the top of the screen going down locks on K1; coming back up from below locks on K73
+    // entering: crossing the top of the screen going down locks on K1. Coming back up never locks.
     const onScroll = () => {
       if (!on) return;
       const t = topNow();
@@ -94,19 +99,20 @@
       const h = H();
       if (prevTop !== null) {
         if (prevTop > 0.5 && t <= 0.5 && t > -h * 0.5) lock(0);
-        else if (prevTop < -0.5 && t >= -0.5 && t < h * 0.5) lock(N - 1);
       }
-      if (!locked) { prevTop = t; if (t < -h * 0.9 && idx !== N - 1) set(N - 1, true); else if (t > innerHeight * 0.9 && idx !== 0) set(0, true); }
+      if (!locked) { prevTop = t; if (t > innerHeight * 0.9 && idx !== 0) set(0, true); } // re-armed: the next way in is K1
     };
     addEventListener('scroll', onScroll, { passive: true });
     // touch: a swipe past ~22px is one gesture = one card (or the release); further movement in the same touch is ignored
     addEventListener('touchstart', (e) => { tDown = true; tFired = false; tBlock = locked; if (e.touches[0]) tY = e.touches[0].clientY; }, { passive: true });
     addEventListener('touchmove', (e) => {
       if (!on || !(locked || tBlock) || e.touches.length > 1) return;
+      const dy = tY - e.touches[0].clientY;
+      if (locked && !tFired && dy <= -6) { tBlock = false; tFired = true; up(); return; } // finger moving down = page going up: release, do not cancel, so it scrolls natively
+      if (locked && !tFired && dy < 0) return; // tiny downward drift: undecided, leave the touch alone
       if (e.cancelable) e.preventDefault();
       if (tFired || !locked) return;
-      const dy = tY - e.touches[0].clientY;
-      if (Math.abs(dy) >= 22) { tFired = true; go(dy > 0 ? 1 : -1, 'touch'); }
+      if (dy >= 22) { tFired = true; go(1, 'touch'); }
     }, { passive: false });
     const tEnd = () => { tDown = false; tBlock = false; };
     addEventListener('touchend', tEnd, { passive: true }); addEventListener('touchcancel', tEnd, { passive: true });
@@ -118,6 +124,7 @@
       const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1);
       if (!locked) { wFired = true; if (swallow) e.preventDefault(); return; } // a burst already running when we lock is swallowed, not counted
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      if (dy <= -4) { up(); return; } // upward: release and let this very event (and the whole burst) scroll natively
       e.preventDefault();
       if (quiet) wFired = false;
       const a = Math.abs(dy); if (a < 4) return;
@@ -131,8 +138,12 @@
       const t = e.target; if (t && t.closest && t.closest('input,textarea,select,[contenteditable]')) return;
       let d = 0; const k = e.key;
       if (k === 'ArrowDown' || k === 'ArrowRight' || k === 'PageDown') d = 1;
-      else if (k === 'ArrowUp' || k === 'ArrowLeft' || k === 'PageUp') d = -1;
-      else if (k === ' ' || k === 'Spacebar') { if (t && t.closest && t.closest('button')) return; d = e.shiftKey ? -1 : 1; }
+      else if (k === 'ArrowLeft') { // in a row of cards, Left is the previous card (keyboard users have no other quick way back); it never leaves the section
+        e.preventDefault(); if (idx > 0 && now() >= busyUntil) { set(idx - 1); busyUntil = now() + STEP_COOL; const c = cards[idx].querySelector('.ac-cover'); if (c) c.focus({ preventScroll: true }); }
+        return;
+      }
+      else if (k === 'ArrowUp' || k === 'PageUp') { up(); return; } // release: the key's own scrolling then takes the page up
+      else if (k === ' ' || k === 'Spacebar') { if (t && t.closest && t.closest('button')) return; if (e.shiftKey) { up(); return; } d = 1; }
       else return;
       e.preventDefault();
       if (go(d, 'key') && locked) { const c = cards[idx].querySelector('.ac-cover'); if (c) c.focus({ preventScroll: true }); }
