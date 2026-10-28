@@ -854,6 +854,22 @@
 
   // ---- unsubscribe (legacy list) ----
   $$('form.unsub').forEach((form) => {
+    setup(form);
     const pe = params.get('e'); if (pe) form.elements.email.value = pe;
+    const status = $('.status', form), E = errs(form);
+    const done = () => thanks(form, `<b>You are unsubscribed.</b>You will not receive further emails from LORENTIS. Questions? Email <a href="mailto:info@lorentis.com.au">info@lorentis.com.au</a>.`);
+    if (params.get('done') === '1') done();
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault(); E.clear(); status.className = 'status'; status.textContent = '';
+      if (!emailOk(form) || !form.elements.email.value.trim()) { E.show({ email: 'Please enter the email address you signed up with.' }); return; }
+      const b = $('button[type=submit]', form); b.disabled = true; const label = b.textContent; b.textContent = 'Sending…';
+      try {
+        const r = await fetch(form.action, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(Object.fromEntries(new FormData(form).entries())) });
+        if ([404, 405, 501].includes(r.status)) { unreachable(form); return; }
+        const j = await r.json().catch(() => ({}));
+        if (r.ok && j.ok) { done(); return; }
+        status.className = 'status bad'; status.textContent = j.error || `Something went wrong. Please email info@lorentis.com.au and we will unsubscribe you.`;
+      } catch { unreachable(form); } finally { b.disabled = false; b.textContent = label; }
+    });
   });
 })();
